@@ -6,7 +6,7 @@ databases:
 
 services:
   - type: web
-    name: kericho-tea-tracker
+    name: CHAIYAKO
     env: python
     plan: free
     buildCommand: "pip install -r requirements.txt"
