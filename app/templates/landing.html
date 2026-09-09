@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kericho Tea Tracker — Digital Farm Records</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="flash-wrap">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash flash-{{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+</div>
+
+<div class="landing-hero">
+  <nav class="landing-nav">
+    <div class="brand">🍃 Kericho Tea Tracker</div>
+    <div class="links">
+      <a href="{{ url_for('auth.login') }}" class="ghost">Farmer log in</a>
+      <a href="{{ url_for('factory_auth.login') }}" class="solid">Factory staff log in</a>
+    </div>
+  </nav>
+
+  <div class="hero-content">
+    <div class="hero-text">
+      <div class="eyebrow">Built for Kericho tea farming — factory-owned</div>
+      <h1>Corruption-free tea buying, with records the moment your tea is weighed.</h1>
+      <p>
+        Every kilo bought at a buying center is recorded the instant it's weighed — visible on
+        your dashboard immediately, with a digital receipt, and visible to factory managers in
+        real time. No more relying on paper the factory alone controls.
+      </p>
+      <div class="hero-cta">
+        <a href="{{ url_for('auth.login') }}" class="btn btn-gold">Farmer log in</a>
+        <a href="{{ url_for('auth.verify') }}" class="btn btn-outline" style="color:#fff; border-color: rgba(255,255,255,0.6);">Set up your account (first login)</a>
+      </div>
+      <p style="margin-top:14px; font-size:0.82rem; opacity:0.75;">
+        New farmer? Your factory registers your account and sends you a code by SMS to set your password.
+      </p>
+    </div>
+
+    <div class="hero-visual">
+      <div class="feature-list">
+        <div class="feature-item">
+          <div class="icon">⚖️</div>
+          <div><h4>Instant weighing records</h4><p>Kilos are recorded the moment the clerk weighs your tea — your dashboard and receipt update immediately.</p></div>
+        </div>
+        <div class="feature-item">
+          <div class="icon">🧾</div>
+          <div><h4>Digital receipts</h4><p>Every purchase is stored permanently — no lost paper slips, no disputes about what was recorded.</p></div>
+        </div>
+        <div class="feature-item">
+          <div class="icon">🟢</div>
+          <div><h4>Live buying-center status</h4><p>See exactly when the lorry and tallyboy are at your buying center — no more listening for the horn.</p></div>
+        </div>
+        <div class="feature-item">
+          <div class="icon">📢</div>
+          <div><h4>Notice board</h4><p>Prices, bonuses, fertilizer availability, and route changes — posted directly by the factory.</p></div>
+        </div>
+        <div class="feature-item">
+          <div class="icon">🗣️</div>
+          <div><h4>Raise a complaint</h4><p>Harassment, short-weighing, unfair terms — file it, and factory managers see and resolve it.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

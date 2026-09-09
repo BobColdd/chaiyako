@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log in — Kericho Tea Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="flash-wrap">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash flash-{{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+</div>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <h1>🍃 Welcome back</h1>
+    <p class="subtitle">Log in to your farm dashboard.</p>
+    <form method="POST">
+      <div>
+        <label>Phone number</label>
+        <input type="text" name="phone" required placeholder="07XX XXX XXX">
+      </div>
+      <div>
+        <label>Password</label>
+        <input type="password" name="password" required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="justify-content:center;">Log in</button>
+    </form>
+    <div class="auth-foot">New farmer registered by the factory but haven't set a password? <a href="{{ url_for('auth.verify') }}">Set it up here</a></div>
+  </div>
+</div>
+</body>
+</html>

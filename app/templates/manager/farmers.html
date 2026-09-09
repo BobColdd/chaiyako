@@ -1,0 +1,79 @@
+{% extends "factory/base.html" %}
+{% block title %}Farmers — Factory{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting">
+    <h1>👤 Farmers</h1>
+    <p>Register new farmers and manage existing ones.</p>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header"><h3>Register a new farmer</h3></div>
+    <form method="POST" action="{{ url_for('manager.register_farmer') }}" style="display:flex; flex-direction:column; gap:12px;">
+      <div><label>Full name</label><input type="text" name="full_name" required></div>
+      <div><label>Phone number</label><input type="text" name="phone" required placeholder="07XX XXX XXX"></div>
+      <div><label>National ID (optional)</label><input type="text" name="national_id"></div>
+      <div>
+        <label>Buying center</label>
+        <select name="buying_center_id" required>
+          {% for c in centers %}<option value="{{ c.id }}">{{ c.name }} ({{ c.code }})</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Scale</label>
+        <select name="scale">
+          <option value="small">Small-scale</option>
+          <option value="large">Large-scale</option>
+        </select>
+      </div>
+      <div><label>Location (optional)</label><input type="text" name="location"></div>
+      <div><label>Approx. bushes (optional)</label><input type="number" name="approx_bushes"></div>
+      <button class="btn btn-primary" type="submit">Register & generate farm number</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>Search farmers</h3></div>
+    <form method="GET" style="display:flex; gap:8px; margin-bottom:16px;">
+      <input type="text" name="q" value="{{ q }}" placeholder="Name, phone, or farm number">
+      <button class="btn btn-outline btn-sm" type="submit">Search</button>
+    </form>
+
+    {% if farmers %}
+      {% for f in farmers %}
+      <div class="note-card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <strong>{{ f.full_name }}</strong>
+          <span class="badge {% if f.must_set_password %}badge-repair{% else %}badge-good{% endif %}">
+            {{ 'Password pending' if f.must_set_password else 'Active' }}
+          </span>
+        </div>
+        <div style="font-size:0.82rem; color: var(--muted); margin-top:4px;">{{ f.phone }}</div>
+        <div style="font-size:0.82rem; margin-top:6px;">
+          Farms: {% for farm in f.farms %}<a href="{{ url_for('manager.farmer_card', farm_id=farm.id) }}" style="color: var(--tea-green); font-weight:600; margin-right:8px;">{{ farm.farm_number }}</a>{% endfor %}
+        </div>
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+          {% if f.must_set_password %}
+          <form method="POST" action="{{ url_for('manager.resend_code', farmer_id=f.id) }}">
+            <button class="btn btn-sm btn-outline" type="submit">Resend code</button>
+          </form>
+          {% endif %}
+          <form method="POST" action="{{ url_for('manager.add_farm_to_farmer', farmer_id=f.id) }}" style="display:flex; gap:6px;">
+            <select name="buying_center_id" style="width:auto; padding:6px 8px; font-size:0.75rem;">
+              {% for c in centers %}<option value="{{ c.id }}">{{ c.code }}</option>{% endfor %}
+            </select>
+            <button class="btn btn-sm btn-outline" type="submit">+ Add farm here</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty-state">No farmers found.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

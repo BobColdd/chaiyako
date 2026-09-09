@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}My Receipts — Kericho Tea Tracker{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting">
+    <h1>🧾 My Receipts</h1>
+    <p>Every kilogram the factory has recorded from you, instantly, across all your farms.</p>
+  </div>
+  <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline btn-sm">← Back to dashboard</a>
+</div>
+
+<div class="stats-grid" style="margin-bottom:20px;">
+  <div class="stat-card stat-1">
+    <div class="label">Grand total sold</div>
+    <div class="value">{{ "%.1f"|format(grand_total) }} kg</div>
+    <div class="sub">Across all your farms, all time</div>
+  </div>
+  <div class="stat-card stat-4">
+    <div class="label">Total receipts</div>
+    <div class="value">{{ purchases|length }}</div>
+    <div class="sub">Weighing transactions recorded</div>
+  </div>
+</div>
+
+<div class="card">
+  {% if purchases %}
+  <table>
+    <thead><tr><th>Receipt No.</th><th>Date & time</th><th>Farm</th><th>Kilos</th><th>Buying center</th><th>Clerk</th></tr></thead>
+    <tbody>
+      {% for p in purchases %}
+      <tr>
+        <td>{{ p.receipt_number }}</td>
+        <td>{{ p.purchased_at.strftime('%d %b %Y, %H:%M') }}</td>
+        <td>{{ p.farm.farm_number }}</td>
+        <td>{{ p.kilos }} kg</td>
+        <td>{{ p.buying_center.name }}</td>
+        <td>{{ p.clerk.full_name }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No receipts yet — once your tea is weighed at a buying center, it will show up here immediately.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

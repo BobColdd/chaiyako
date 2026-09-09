@@ -1,0 +1,70 @@
+{% extends "factory/base.html" %}
+{% block title %}Buying — {{ center.name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting">
+    <h1><span class="live-dot on"></span>{{ center.name }}</h1>
+    <p>You're live — farmers here can see the lorry has arrived. Log out to end this session.</p>
+  </div>
+  <a href="{{ url_for('factory_auth.logout') }}" class="btn btn-outline btn-sm">End session (log out)</a>
+</div>
+
+<div class="stats-grid" style="margin-bottom:20px; grid-template-columns: repeat(auto-fit, minmax(180px,1fr));">
+  <div class="stat-card stat-1">
+    <div class="label">Kilos bought today (this center)</div>
+    <div class="value">{{ "%.1f"|format(today_total) }} kg</div>
+    <div class="sub">{{ today_purchases|length }} transaction(s)</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header"><h3>⚖️ Record a purchase</h3></div>
+  <form method="POST" action="{{ url_for('clerk.buy') }}" id="buyForm">
+    <label>Swipe the farmer's card (or type the farm number)</label>
+    <input type="text" name="farm_number" id="farmNumberInput" class="scan-input" autofocus autocomplete="off" placeholder="Waiting for scan..." required>
+    <div style="margin-top:14px;">
+      <label>Kilos weighed</label>
+      <input type="number" step="0.1" min="0" name="kilos" id="kilosInput" required placeholder="e.g. 18.5" style="font-size:1.1rem; padding:14px;">
+    </div>
+    <button class="btn btn-primary" type="submit" style="margin-top:16px; width:100%; justify-content:center; padding:14px;">Record purchase</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Today's purchases at this center</h3></div>
+  {% if today_purchases %}
+  <table>
+    <thead><tr><th>Time</th><th>Receipt</th><th>Farm</th><th>Farmer</th><th>Kilos</th></tr></thead>
+    <tbody>
+      {% for p in today_purchases %}
+      <tr>
+        <td>{{ p.purchased_at.strftime('%H:%M') }}</td>
+        <td>{{ p.receipt_number }}</td>
+        <td>{{ p.farm.farm_number }}</td>
+        <td>{{ p.farm.owner.full_name }}</td>
+        <td>{{ p.kilos }} kg</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No purchases recorded yet today.</p>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// After the barcode scanner "types" the farm number, most devices send an
+// Enter/Tab keystroke — jump straight to the kilos field so the clerk can
+// weigh and confirm without touching the screen.
+document.getElementById('farmNumberInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    document.getElementById('kilosInput').focus();
+  }
+});
+</script>
+{% endblock %}

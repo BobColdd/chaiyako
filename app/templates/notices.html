@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Notice Board — Kericho Tea Tracker{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting">
+    <h1>📢 Notice Board</h1>
+    <p>Announcements from your factory — prices, bonuses, fertilizer, and route changes.</p>
+  </div>
+  <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline btn-sm">← Back to dashboard</a>
+</div>
+
+<div class="card">
+  {% if notices %}
+    {% for n in notices %}
+    <div class="news-item">
+      <span class="badge {% if n.category == 'price' %}badge-good{% elif n.category == 'bonus' %}badge-good{% elif n.category == 'fertilizer' %}badge-repair{% elif n.category == 'route_change' %}badge-lost{% else %}badge-damaged{% endif %}" style="text-transform:capitalize;">{{ n.category.replace('_',' ') }}</span>
+      <div style="margin-top:8px; font-weight:600; color: var(--tea-dark);">{{ n.title }}</div>
+      <p style="margin-top:4px; font-size:0.9rem; color: var(--ink);">{{ n.content }}</p>
+      <div class="meta">{{ n.created_at.strftime('%d %b %Y, %H:%M') }}{% if n.buying_center %} · {{ n.buying_center.name }} only{% else %} · All farmers{% endif %}</div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state">No notices posted yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "factory/base.html" %}
+{% block title %}Routes & Tallyboys — Factory{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>🛣️ Routes & Tallyboy Assignments</h1><p>Routes are stable; tallyboys rotate through them.</p></div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header"><h3>Create a route</h3></div>
+    <form method="POST" style="display:flex; gap:10px;">
+      <input type="text" name="name" required placeholder="e.g. Route A — Kapsuser Loop">
+      <button class="btn btn-primary btn-sm" type="submit">Create</button>
+    </form>
+  </div>
+</div>
+
+{% for r in routes %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="card-header">
+    <h3>{{ r.name }}</h3>
+    <span class="hint">{{ r.buying_centers|length }} center(s)</span>
+  </div>
+  <p style="font-size:0.88rem; color: var(--muted); margin-bottom:12px;">
+    Current tallyboy: <strong>{{ r.current_tallyboy.full_name if r.current_tallyboy else 'Unassigned' }}</strong>
+    {% if r.buying_centers %} · Centers: {{ r.buying_centers|map(attribute='name')|join(', ') }}{% endif %}
+  </p>
+  <form method="POST" action="{{ url_for('manager.assign_route', route_id=r.id) }}" style="display:flex; gap:10px;">
+    <select name="clerk_id" required style="flex:1;">
+      <option value="">Assign a tallyboy...</option>
+      {% for c in clerks %}<option value="{{ c.id }}">{{ c.full_name }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-outline btn-sm" type="submit">Assign</button>
+  </form>
+</div>
+{% else %}
+<div class="card empty-state"><p>No routes created yet.</p></div>
+{% endfor %}
+
+{% endblock %}
