@@ -11,6 +11,8 @@ services:
     plan: free
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn run:app"
+    domains:
+      -://factory/chaiyako.site
     envVars:
       - key: SECRET_KEY
         generateValue: true
