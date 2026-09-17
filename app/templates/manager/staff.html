@@ -1,0 +1,79 @@
+{% extends "factory/base.html" %}
+{% block title %}Staff — Factory{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>🧑‍💼 Factory Staff</h1><p>Clerks/tallyboys and managers.</p></div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header"><h3>Create staff account</h3></div>
+    <form method="POST" style="display:flex; flex-direction:column; gap:12px;" id="staff-form">
+      <div><label>Full name</label><input type="text" name="full_name" required></div>
+      <div><label>Username</label><input type="text" name="username" required placeholder="e.g. jkiplagat"></div>
+      <div><label>Phone (optional)</label><input type="text" name="phone"></div>
+      <div>
+        <label>Role</label>
+        <select name="role" id="role-select" onchange="toggleRoleFields()">
+          <option value="clerk">Clerk / Tallyboy</option>
+          <option value="manager">Manager</option>
+        </select>
+      </div>
+      <div id="password-field">
+        <label>Password</label>
+        <input type="password" name="password" minlength="6">
+        <p class="hint">Required for managers (used to log in on the web).</p>
+      </div>
+      <div id="pin-field">
+        <label>PIN</label>
+        <input type="password" name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6">
+        <p class="hint">Required for clerks — 4-6 digits, used to log in at the clerk login screen.</p>
+      </div>
+      <button class="btn btn-primary" type="submit">Create account</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>All staff</h3></div>
+    {% if staff %}
+    <table>
+      <thead><tr><th>Name</th><th>Role</th><th>Username</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for s in staff %}
+        <tr>
+          <td>{{ s.full_name }}</td>
+          <td style="text-transform:capitalize;">{{ s.role }}</td>
+          <td>{{ s.username }}</td>
+          <td><span class="badge {{ 'badge-good' if s.is_active_staff else 'badge-damaged' }}">{{ 'Active' if s.is_active_staff else 'Deactivated' }}</span></td>
+          <td style="display:flex; gap:6px; flex-wrap:wrap;">
+            <form method="POST" action="{{ url_for('manager.toggle_staff', staff_id=s.id) }}">
+              <button class="btn btn-sm btn-outline" type="submit">{{ 'Deactivate' if s.is_active_staff else 'Reactivate' }}</button>
+            </form>
+            {% if s.is_clerk %}
+            <form method="POST" action="{{ url_for('manager.reset_pin', staff_id=s.id) }}" style="display:flex; gap:4px;">
+              <input type="password" name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="New PIN" style="width:90px; padding:6px 8px; font-size:0.75rem;">
+              <button class="btn btn-sm btn-outline" type="submit">Set PIN</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No staff yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function toggleRoleFields() {
+  const role = document.getElementById('role-select').value;
+  document.getElementById('password-field').style.display = role === 'manager' ? 'block' : 'none';
+  document.getElementById('pin-field').style.display = role === 'clerk' ? 'block' : 'none';
+}
+toggleRoleFields();
+</script>
+
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "factory/base.html" %}
+{% block title %}Notice Board — Factory{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>📢 Notice Board</h1><p>Post announcements farmers see on their dashboard.</p></div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header"><h3>Post a notice</h3></div>
+    <form method="POST" style="display:flex; flex-direction:column; gap:12px;">
+      <div>
+        <label>Category</label>
+        <select name="category">
+          <option value="general">General</option>
+          <option value="price">Price</option>
+          <option value="bonus">Bonus</option>
+          <option value="fertilizer">Fertilizer</option>
+          <option value="route_change">Route change</option>
+        </select>
+      </div>
+      <div>
+        <label>Audience</label>
+        <select name="buying_center_id">
+          <option value="">All farmers</option>
+          {% for c in centers %}<option value="{{ c.id }}">{{ c.name }} only</option>{% endfor %}
+        </select>
+      </div>
+      <div><label>Title</label><input type="text" name="title" required></div>
+      <div><label>Content</label><textarea name="content" required></textarea></div>
+      <button class="btn btn-primary" type="submit" style="align-self:flex-start;">Post notice</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>Posted notices</h3></div>
+    {% if notices %}
+      {% for n in notices %}
+      <div class="note-card">
+        <div style="display:flex; justify-content:space-between;">
+          <strong style="text-transform:capitalize;">{{ n.category.replace('_',' ') }}</strong>
+          <span style="font-size:0.75rem; color: var(--muted);">{{ n.buying_center.name if n.buying_center else 'All farmers' }}</span>
+        </div>
+        <div class="note-title" style="margin-top:4px;">{{ n.title }}</div>
+        <p style="font-size:0.85rem;">{{ n.content }}</p>
+        <div class="note-date">{{ n.created_at.strftime('%d %b %Y, %H:%M') }} · by {{ n.posted_by.full_name }}</div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty-state">No notices posted yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

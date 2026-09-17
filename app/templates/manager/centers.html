@@ -1,0 +1,49 @@
+{% extends "factory/base.html" %}
+{% block title %}Buying Centers — Factory{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>📍 Buying Centers</h1><p>Fixed locations farmers are assigned to.</p></div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header"><h3>Add a buying center</h3></div>
+    <form method="POST" style="display:flex; flex-direction:column; gap:12px;">
+      <div><label>Name</label><input type="text" name="name" required placeholder="e.g. Kapsuser Buying Center"></div>
+      <div><label>Code</label><input type="text" name="code" required placeholder="e.g. 039" maxlength="10"></div>
+      <div>
+        <label>Route (optional)</label>
+        <select name="route_id">
+          <option value="">— Unassigned —</option>
+          {% for r in routes %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div><label>Location notes (optional)</label><input type="text" name="location_notes"></div>
+      <button class="btn btn-primary" type="submit">Add center</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>All centers</h3></div>
+    {% if centers %}
+    <table>
+      <thead><tr><th>Status</th><th>Name</th><th>Code</th><th>Route</th></tr></thead>
+      <tbody>
+        {% for c in centers %}
+        <tr>
+          <td><span class="live-dot {{ 'on' if c.is_buying_now else 'off' }}"></span></td>
+          <td>{{ c.name }}</td>
+          <td>{{ c.code }}</td>
+          <td>{{ c.route.name if c.route else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No buying centers yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
