@@ -43,7 +43,7 @@
         <td>{{ p.receipt_number }}</td>
         <td>{{ p.farm.farm_number }}</td>
         <td>{{ p.farm.owner.full_name }}</td>
-        <td>{{ p.kilos }} kg</td>
+        <td>{{ "%.1f"|format(p.kilos) }} kg</td>
       </tr>
       {% endfor %}
     </tbody>

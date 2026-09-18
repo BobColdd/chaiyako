@@ -27,9 +27,15 @@ def home():
     session = current_user.active_session
 
     if not session:
-        route = current_user.current_route
+        routes = current_user.current_routes
+        route_id = request.args.get("route_id", type=int)
+        route = None
+        if route_id:
+            route = next((r for r in routes if r.id == route_id), None)
+        elif len(routes) == 1:
+            route = routes[0]
         centers = route.buying_centers if route else []
-        return render_template("clerk/select_center.html", centers=centers, route=route)
+        return render_template("clerk/select_center.html", centers=centers, route=route, routes=routes)
 
     today_purchases = (
         Purchase.query.filter_by(clerk_id=current_user.id, buying_center_id=session.buying_center_id)
@@ -53,11 +59,11 @@ def home():
 @clerk_required
 def select_center():
     center_id = request.form.get("buying_center_id", type=int)
-    route = current_user.current_route
-    valid_ids = {c.id for c in route.buying_centers} if route else set()
+    routes = current_user.current_routes
+    valid_ids = {c.id for r in routes for c in r.buying_centers}
 
     if not center_id or center_id not in valid_ids:
-        flash("Please choose a valid buying center from your route.", "error")
+        flash("Please choose a valid buying center from one of your assigned routes.", "error")
         return redirect(url_for("clerk.home"))
 
     session = ClerkSession(clerk_id=current_user.id, buying_center_id=center_id)
@@ -96,6 +102,8 @@ def buy():
     if not kilos or kilos <= 0:
         flash("Enter a valid weight in kilos.", "error")
         return redirect(url_for("clerk.home"))
+
+    kilos = round(kilos, 1)
 
     purchase = Purchase(
         receipt_number=Purchase.generate_receipt_number(),

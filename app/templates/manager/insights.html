@@ -51,6 +51,21 @@
   <div class="chart-wrap"><canvas id="purchasesChart"></canvas></div>
 </div>
 
+<div class="grid-2" style="margin-bottom:20px;">
+  <div class="card">
+    <div class="card-header"><h3>🏆 Buying centers — today vs yesterday</h3></div>
+    <div class="chart-wrap" style="height:320px;"><canvas id="centerBarChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3>🍃 Tea quality mix (last 30 days)</h3></div>
+    {% if quality_counts.good + quality_counts.average + quality_counts.poor > 0 %}
+    <div class="chart-wrap" style="height:320px;"><canvas id="qualityChart"></canvas></div>
+    {% else %}
+    <p class="empty-state">No quality records from reception yet.</p>
+    {% endif %}
+  </div>
+</div>
+
 <div class="card" style="margin-bottom:20px;">
   <div class="card-header"><h3>⚖️ Compare periods</h3></div>
   <div class="chart-toolbar">
@@ -130,6 +145,8 @@
 <script>
 const seriesUrl = "{{ url_for('manager.insights_series') }}";
 const compareUrl = "{{ url_for('manager.insights_compare') }}";
+const centerChartData = {{ center_chart_data|tojson }};
+const qualityCounts = {{ quality_counts|tojson }};
 
 let chart;
 async function loadChart() {
@@ -168,6 +185,48 @@ async function loadChart() {
 
 document.getElementById('chart-center').addEventListener('change', loadChart);
 document.getElementById('chart-days').addEventListener('change', loadChart);
+
+// Buying centers — today vs yesterday, grouped bars
+if (document.getElementById('centerBarChart')) {
+  new Chart(document.getElementById('centerBarChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: centerChartData.map(r => r.name),
+      datasets: [
+        { label: 'Today', data: centerChartData.map(r => r.today), backgroundColor: '#1b7a43' },
+        { label: 'Yesterday', data: centerChartData.map(r => r.yesterday), backgroundColor: '#c9a227' },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 45, font: { size: 10 } } },
+        y: { beginAtZero: true, title: { display: true, text: 'kg' } },
+      }
+    }
+  });
+}
+
+// Quality mix donut
+if (document.getElementById('qualityChart')) {
+  new Chart(document.getElementById('qualityChart').getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Good', 'Average', 'Poor'],
+      datasets: [{
+        data: [qualityCounts.good, qualityCounts.average, qualityCounts.poor],
+        backgroundColor: ['#1c7a3c', '#c9a227', '#b83127'],
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+    }
+  });
+}
 
 document.getElementById('compare-mode').addEventListener('change', (e) => {
   const isMonths = e.target.value === 'months';

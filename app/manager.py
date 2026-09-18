@@ -9,7 +9,7 @@ from app import db
 from app.models import Farmer, Farm
 from app.factory_models import (
     FactoryUser, BuyingCenter, Route, RouteAssignment, ClerkSession,
-    Purchase, Notice, FertilizerDistribution, Complaint,
+    Purchase, Notice, FertilizerDistribution, Complaint, QualityRecord,
 )
 from app.sms import send_sms
 from app.analytics import total_kilos, daily_series, center_leaderboard, center_trend, compare_periods
@@ -105,11 +105,31 @@ def insights():
     )
     top_farmers = sorted(all_farmers, key=lambda f: f.total_purchased_kilos, reverse=True)[:15]
 
+    # Plain-dict version of the leaderboard for the bar chart (JS-serializable —
+    # trend_rows above holds actual model objects, which json can't handle).
+    center_chart_data = [
+        {"name": r["center"].name, "today": round(r["today_kilos"], 1), "yesterday": round(r["yesterday_kilos"], 1)}
+        for r in trend_rows
+    ]
+
+    # Quality mix over the last 30 days, for the quality-grade donut chart.
+    quality_counts = {"good": 0, "average": 0, "poor": 0}
+    recent_quality = (
+        QualityRecord.query.join(BuyingCenter)
+        .filter(BuyingCenter.factory_id == fid, QualityRecord.date >= today - timedelta(days=30))
+        .all()
+    )
+    for q in recent_quality:
+        if q.grade in quality_counts:
+            quality_counts[q.grade] += 1
+
     return render_template(
         "manager/insights.html",
         centers=centers,
         trend_rows=trend_rows,
         top_farmers=top_farmers,
+        center_chart_data=center_chart_data,
+        quality_counts=quality_counts,
         today_total=total_kilos(fid, today, today),
         yesterday_total=total_kilos(fid, yesterday, yesterday),
         week_total=total_kilos(fid, today - timedelta(days=6), today),

@@ -6,11 +6,17 @@ interactive prompts.
 Scale of this demo:
     1  factory
     1  manager
+    1  receiver (factory reception / quality clerk)
     5  tallyboys / clerks
     12 routes
     24 buying centers (2 per route)
-    50 farmers (~60 farms — 10 farmers have a second plot)
-    ~350 historical purchases + a handful of "live today" purchases
+    150 farmers (~180 farms — some farmers have a second plot)
+    several thousand historical purchases over 60 days, all normal per-visit
+         weights (5-22 kg smallholder, 18-45 kg large-scale, one decimal
+         place) — with deliberate, readable per-center trends for the
+         Insights/Trends charts, driven by how many farmers deliver each
+         day rather than any purchase being resized
+    quality grades for every buying center for the last 11 days
     notices, fertilizer distributions, and complaints for realism
 
 Run once (locally against SQLite, or on Render against Postgres):
@@ -38,7 +44,7 @@ from app import create_app, db
 from app.models import Farmer, Farm
 from app.factory_models import (
     Factory, FactoryUser, BuyingCenter, Route, RouteAssignment,
-    ClerkSession, Purchase, Notice, FertilizerDistribution, Complaint,
+    ClerkSession, Purchase, Notice, FertilizerDistribution, Complaint, QualityRecord,
 )
 
 random.seed(42)  # reproducible demo data across runs
@@ -137,6 +143,13 @@ def _seed():
     db.session.add_all(clerks)
     db.session.flush()
 
+    # --- Reception / quality clerk (1) — sits between manager and clerks ---
+    receiver = FactoryUser(factory_id=factory.id, full_name="Grace Wanjiru", username="reception", role="receiver")
+    receiver.set_password("reception123")
+    receiver.set_pin("4321")
+    db.session.add(receiver)
+    db.session.flush()
+
     # --- Routes (12) + buying centers (24) ---
     routes = []
     centers = []  # flat list, in the same order as ROUTES, 2 per route
@@ -163,8 +176,8 @@ def _seed():
     ))
     db.session.flush()
 
-    # --- Farmers (50) + farms (~58, some farmers have 2 plots) ---
-    farmer_names = _make_farmer_names(50)
+    # --- Farmers (150) + farms (~180, some farmers have 2 plots) ---
+    farmer_names = _make_farmer_names(150)
     farmers = []
     for idx, full_name in enumerate(farmer_names, start=1):
         phone = f"0712345{idx:03d}"
@@ -210,8 +223,20 @@ def _seed():
                                      login_at=datetime.utcnow() - timedelta(minutes=random.randint(15, 90))))
     db.session.flush()
 
-    # --- Purchases: ~6 per farm over the last 21 days, plus a few "today" ---
+    # --- Purchases: generated center-by-center, day-by-day over the last 60
+    # days, so buying-center totals follow deliberate (but realistic) trends
+    # that the Insights/Trends charts can actually show. Buying centers are
+    # split into three buckets: bucket 0 has been trending up over the last
+    # two weeks, bucket 1 trending down, bucket 2 steady. The trend is
+    # encoded purely through how MANY farmers deliver on a given day — every
+    # individual purchase is still just a normal, realistic per-visit weight
+    # for that farm's size (never distorted to hit a target), so nothing
+    # ever looks like an outlier.
     receipt_counter = 0
+    PURCHASE_WINDOW_DAYS = 60
+    TREND_WINDOW_DAYS = 14
+    center_bucket = {c.id: i % 3 for i, c in enumerate(centers)}
+    farmer_by_id = {f.id: f for f in farmers}
 
     def next_receipt():
         nonlocal receipt_counter
@@ -226,20 +251,56 @@ def _seed():
             if c.route_id == route.id:
                 clerk_by_center[c.id] = clerks[clerk_idx]
 
+    farms_by_center = {}
     for farm in farms:
-        clerk = clerk_by_center.get(farm.buying_center_id, clerks[0])
-        farmer = next(f for f in farmers if f.id == farm.farmer_id)
-        kilo_range = (20, 60) if farmer.scale == "large" else (8, 28)
-        n_purchases = random.randint(5, 7)
-        for i in range(n_purchases, 0, -1):
-            days_ago = random.randint(1, 21)
+        farms_by_center.setdefault(farm.buying_center_id, []).append(farm)
+
+    def day_trend_factor(center_id, days_ago):
+        """How much higher/lower than baseline this center's total should be
+        on this particular day. Flat (1.0) outside the recent 2-week window;
+        inside it, ramps toward each bucket's direction."""
+        if days_ago > TREND_WINDOW_DAYS:
+            return 1.0
+        bucket = center_bucket[center_id]
+        recency = 1 - (days_ago / TREND_WINDOW_DAYS)  # 0 (14 days ago) .. ~1 (today)
+        if bucket == 0:
+            return 0.8 + 0.4 * recency   # gently improving this fortnight
+        if bucket == 1:
+            return 1.2 - 0.4 * recency   # gently dropping this fortnight
+        return 1.0                        # steady
+
+    for center in centers:
+        center_farms = farms_by_center.get(center.id, [])
+        if not center_farms:
+            continue
+        clerk = clerk_by_center.get(center.id, clerks[0])
+        # A believable daily baseline for this specific center — some
+        # centers are simply bigger than others, which is normal and not
+        # itself a trend signal.
+        baseline = random.uniform(60, 140)
+
+        for days_ago in range(PURCHASE_WINDOW_DAYS, -1, -1):  # includes today (0)
             day = datetime.utcnow() - timedelta(days=days_ago)
-            kilos = round(random.uniform(*kilo_range), 1)
-            db.session.add(Purchase(
-                receipt_number=next_receipt(), farm_id=farm.id, buying_center_id=farm.buying_center_id,
-                clerk_id=clerk.id, kilos=kilos,
-                purchased_at=day.replace(hour=random.randint(8, 16), minute=random.randint(0, 59)),
-            ))
+            if day.weekday() == 6 and random.random() < 0.85:
+                continue  # buying centers mostly rest on Sundays
+
+            target = baseline * day_trend_factor(center.id, days_ago) * random.uniform(0.9, 1.1)
+            running = 0.0
+            while running < target:
+                farm = random.choice(center_farms)
+                farmer = farmer_by_id[farm.farmer_id]
+                # Normal smallholder/large-farm per-visit tea-leaf weights
+                # (kg) — never stretched or shrunk to hit a target; the
+                # day's total emerges from how many of these normal
+                # deliveries happen, not from resizing any one of them.
+                kilo_range = (18, 45) if farmer.scale == "large" else (5, 22)
+                kilos = round(random.uniform(*kilo_range), 1)
+                db.session.add(Purchase(
+                    receipt_number=next_receipt(), farm_id=farm.id, buying_center_id=center.id,
+                    clerk_id=clerk.id, kilos=kilos,
+                    purchased_at=day.replace(hour=random.randint(8, 16), minute=random.randint(0, 59)),
+                ))
+                running += kilos
 
     # A handful of purchases recorded "today" at the live centers, for the live demo
     for clerk, center in live_pairs:
@@ -311,6 +372,17 @@ def _seed():
             complaint.resolved_at = created + timedelta(days=random.randint(1, 4))
         db.session.add(complaint)
 
+    # --- Quality records (reception clerk grading, last 10 days per center) ---
+    grade_choices = ["good", "good", "average", "average", "poor"]  # weighted toward good/average
+    for c in centers:
+        for days_ago in range(10, -1, -1):
+            d = date.today() - timedelta(days=days_ago)
+            db.session.add(QualityRecord(
+                buying_center_id=c.id, date=d, grade=random.choice(grade_choices),
+                recorded_by_id=receiver.id,
+                recorded_at=datetime.combine(d, datetime.min.time()) + timedelta(hours=random.randint(15, 19)),
+            ))
+
     db.session.commit()
 
     print("Demo data created!\n")
@@ -319,6 +391,8 @@ def _seed():
     print("=" * 60)
     print("  Manager -> visit /factory/manager/login")
     print("    username: manager   password: manager123")
+    print("  Reception -> visit /factory/receiver/login")
+    print("    username: reception   pin: 4321")
     print("  Clerks  -> visit /factory/clerk/login")
     for full_name, username, pin in TALLYBOYS:
         print(f"  {full_name:<20} -> username: {username}   pin: {pin}")
