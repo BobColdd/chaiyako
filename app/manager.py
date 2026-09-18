@@ -1,6 +1,6 @@
 import secrets
 from functools import wraps
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, abort
 from flask_login import login_required, current_user
@@ -12,6 +12,7 @@ from app.factory_models import (
     Purchase, Notice, FertilizerDistribution, Complaint,
 )
 from app.sms import send_sms
+from app.analytics import total_kilos, daily_series, center_leaderboard, center_trend, compare_periods
 
 manager_bp = Blueprint("manager", __name__, url_prefix="/manager")
 
@@ -70,6 +71,74 @@ def dashboard():
         farmer_count=farmer_count,
         centers=centers,
     )
+
+
+# ---------- Insights (analytics) ----------
+
+@manager_bp.route("/insights")
+@login_required
+@manager_required
+def insights():
+    fid = _factory_id()
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+
+    centers = BuyingCenter.query.filter_by(factory_id=fid).order_by(BuyingCenter.name).all()
+
+    today_by_center = {row["center"].id: row["kilos"] for row in center_leaderboard(fid, today)}
+    yesterday_by_center = {row["center"].id: row["kilos"] for row in center_leaderboard(fid, yesterday)}
+
+    trend_rows = []
+    for c in centers:
+        direction, pct = center_trend(fid, c.id)
+        trend_rows.append({
+            "center": c,
+            "today_kilos": today_by_center.get(c.id, 0),
+            "yesterday_kilos": yesterday_by_center.get(c.id, 0),
+            "direction": direction,
+            "pct_change": pct,
+        })
+    trend_rows.sort(key=lambda r: r["today_kilos"], reverse=True)
+
+    all_farmers = (
+        Farmer.query.join(Farm).join(BuyingCenter).filter(BuyingCenter.factory_id == fid).distinct().all()
+    )
+    top_farmers = sorted(all_farmers, key=lambda f: f.total_purchased_kilos, reverse=True)[:15]
+
+    return render_template(
+        "manager/insights.html",
+        centers=centers,
+        trend_rows=trend_rows,
+        top_farmers=top_farmers,
+        today_total=total_kilos(fid, today, today),
+        yesterday_total=total_kilos(fid, yesterday, yesterday),
+        week_total=total_kilos(fid, today - timedelta(days=6), today),
+        month_total=total_kilos(fid, today.replace(day=1), today),
+    )
+
+
+@manager_bp.route("/insights/series")
+@login_required
+@manager_required
+def insights_series():
+    fid = _factory_id()
+    days = max(7, min(request.args.get("days", 30, type=int), 180))
+    center_id = request.args.get("center_id", type=int) or None
+    labels, values = daily_series(fid, days=days, center_id=center_id)
+    return {"labels": labels, "values": values}
+
+
+@manager_bp.route("/insights/compare")
+@login_required
+@manager_required
+def insights_compare():
+    fid = _factory_id()
+    center_id = request.args.get("center_id", type=int) or None
+    mode = request.args.get("mode", "days")
+    try:
+        return compare_periods(fid, mode, request.args.get("a", ""), request.args.get("b", ""), center_id)
+    except (ValueError, IndexError, TypeError):
+        return {"error": "Enter two valid dates to compare."}, 400
 
 
 # ---------- Farmers ----------
@@ -272,20 +341,24 @@ def staff():
             flash("That username is already taken.", "error")
             return redirect(url_for("manager.staff"))
 
+        if role not in ("clerk", "receiver", "manager"):
+            flash("Invalid role.", "error")
+            return redirect(url_for("manager.staff"))
+
         if role == "manager" and (not password or len(password) < 6):
             flash("Managers need a password of at least 6 characters.", "error")
             return redirect(url_for("manager.staff"))
 
-        if role == "clerk" and (not pin or not pin.isdigit() or not (4 <= len(pin) <= 6)):
-            flash("Clerks need a 4-6 digit PIN.", "error")
+        if role in ("clerk", "receiver") and (not pin or not pin.isdigit() or not (4 <= len(pin) <= 6)):
+            flash("Clerks and reception staff need a 4-6 digit PIN.", "error")
             return redirect(url_for("manager.staff"))
 
         new_staff = FactoryUser(factory_id=fid, full_name=full_name, username=username, phone=phone, role=role)
-        # Clerks log in with a PIN, not a password — a password is still stored
-        # on the account (the model requires one), so generate a random one
-        # behind the scenes when the manager didn't set it explicitly.
+        # Clerks and reception staff log in with a PIN, not a password — a
+        # password is still stored on the account (the model requires one),
+        # so generate a random one behind the scenes when not set explicitly.
         new_staff.set_password(password or secrets.token_hex(16))
-        if role == "clerk":
+        if role in ("clerk", "receiver"):
             new_staff.set_pin(pin)
         db.session.add(new_staff)
         db.session.commit()
@@ -310,7 +383,9 @@ def toggle_staff(staff_id):
 @login_required
 @manager_required
 def reset_pin(staff_id):
-    staff_member = FactoryUser.query.filter_by(id=staff_id, factory_id=_factory_id(), role="clerk").first_or_404()
+    staff_member = FactoryUser.query.filter_by(id=staff_id, factory_id=_factory_id()).first_or_404()
+    if staff_member.role not in ("clerk", "receiver"):
+        abort(403)
     pin = request.form.get("pin", "").strip()
 
     if not pin or not pin.isdigit() or not (4 <= len(pin) <= 6):

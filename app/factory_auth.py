@@ -8,7 +8,11 @@ factory_auth_bp = Blueprint("factory_auth", __name__, url_prefix="/factory")
 
 
 def _redirect_home(staff):
-    return redirect(url_for("manager.dashboard" if staff.is_manager else "clerk.home"))
+    if staff.is_manager:
+        return redirect(url_for("manager.dashboard"))
+    if staff.is_receiver:
+        return redirect(url_for("receiver.home"))
+    return redirect(url_for("clerk.home"))
 
 
 @factory_auth_bp.route("/login")
@@ -75,6 +79,35 @@ def clerk_login():
         return redirect(url_for("clerk.home"))
 
     return render_template("factory/clerk_login.html")
+
+
+@factory_auth_bp.route("/receiver/login", methods=["GET", "POST"])
+def receiver_login():
+    if current_user.is_authenticated:
+        return _redirect_home(current_user)
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip().lower()
+        pin = request.form.get("pin", "").strip()
+
+        staff = FactoryUser.query.filter_by(username=username).first()
+
+        if not staff or not staff.check_pin(pin):
+            flash("Invalid username or PIN.", "error")
+            return render_template("factory/receiver_login.html")
+
+        if not staff.is_receiver:
+            flash("That account isn't a reception account.", "error")
+            return render_template("factory/receiver_login.html")
+
+        if not staff.is_active_staff:
+            flash("This account has been deactivated. Contact your manager.", "error")
+            return render_template("factory/receiver_login.html")
+
+        login_user(staff)
+        return redirect(url_for("receiver.home"))
+
+    return render_template("factory/receiver_login.html")
 
 
 @factory_auth_bp.route("/logout")

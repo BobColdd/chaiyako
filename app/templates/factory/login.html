@@ -22,6 +22,7 @@
     <p class="subtitle">Who's logging in?</p>
     <div style="display:flex; flex-direction:column; gap:12px; margin-top:8px;">
       <a href="{{ url_for('factory_auth.manager_login') }}" class="btn btn-gold" style="justify-content:center;">🧑‍💼 Manager</a>
+      <a href="{{ url_for('factory_auth.receiver_login') }}" class="btn btn-outline" style="justify-content:center; color:#fff; border-color: rgba(255,255,255,0.6);">🏭 Reception / Quality</a>
       <a href="{{ url_for('factory_auth.clerk_login') }}" class="btn btn-outline" style="justify-content:center; color:#fff; border-color: rgba(255,255,255,0.6);">⚖️ Clerk / Tallyboy</a>
     </div>
     <div class="auth-foot"><a href="{{ url_for('main.landing') }}">← Back to main site</a></div>

@@ -17,6 +17,7 @@
         <label>Role</label>
         <select name="role" id="role-select" onchange="toggleRoleFields()">
           <option value="clerk">Clerk / Tallyboy</option>
+          <option value="receiver">Reception / Quality clerk</option>
           <option value="manager">Manager</option>
         </select>
       </div>
@@ -28,7 +29,7 @@
       <div id="pin-field">
         <label>PIN</label>
         <input type="password" name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6">
-        <p class="hint">Required for clerks — 4-6 digits, used to log in at the clerk login screen.</p>
+        <p class="hint">Required for clerks and reception staff — 4-6 digits, used to log in.</p>
       </div>
       <button class="btn btn-primary" type="submit">Create account</button>
     </form>
@@ -50,7 +51,7 @@
             <form method="POST" action="{{ url_for('manager.toggle_staff', staff_id=s.id) }}">
               <button class="btn btn-sm btn-outline" type="submit">{{ 'Deactivate' if s.is_active_staff else 'Reactivate' }}</button>
             </form>
-            {% if s.is_clerk %}
+            {% if s.is_clerk or s.is_receiver %}
             <form method="POST" action="{{ url_for('manager.reset_pin', staff_id=s.id) }}" style="display:flex; gap:4px;">
               <input type="password" name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="New PIN" style="width:90px; padding:6px 8px; font-size:0.75rem;">
               <button class="btn btn-sm btn-outline" type="submit">Set PIN</button>
@@ -71,7 +72,7 @@
 function toggleRoleFields() {
   const role = document.getElementById('role-select').value;
   document.getElementById('password-field').style.display = role === 'manager' ? 'block' : 'none';
-  document.getElementById('pin-field').style.display = role === 'clerk' ? 'block' : 'none';
+  document.getElementById('pin-field').style.display = role === 'manager' ? 'none' : 'block';
 }
 toggleRoleFields();
 </script>

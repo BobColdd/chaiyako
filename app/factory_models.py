@@ -23,8 +23,13 @@ class Factory(db.Model):
 
 
 class FactoryUser(UserMixin, db.Model):
-    """Factory staff: clerks/tallyboys (buy tea at a center) and managers
-    (see everything, manage centers/routes/staff, resolve complaints)."""
+    """Factory staff — three roles:
+    - 'clerk': tallyboys who buy tea out on the routes (PIN login).
+    - 'receiver': the factory-floor clerk who receives the tea as it arrives
+      at the factory and grades its quality per buying center (PIN login).
+    - 'manager': sees everything, manages centers/routes/staff, resolves
+      complaints, and gets the full analytics picture (password login).
+    """
 
     __tablename__ = "factory_users"
 
@@ -67,6 +72,10 @@ class FactoryUser(UserMixin, db.Model):
         return self.role == "clerk"
 
     @property
+    def is_receiver(self):
+        return self.role == "receiver"
+
+    @property
     def active_session(self):
         """The clerk's currently open (not logged out) buying session, if any."""
         return (
@@ -83,6 +92,20 @@ class FactoryUser(UserMixin, db.Model):
             .first()
         )
         return assignment.route if assignment else None
+
+    @property
+    def current_routes(self):
+        """All routes currently assigned to this clerk. A clerk can run more
+        than one route at once (a manager can assign several), so this is
+        what the clerk picks from at login — current_route above just picks
+        one and is kept only for the mobile API's simpler single-route view."""
+        assignments = (
+            RouteAssignment.query.filter_by(clerk_id=self.id, end_date=None)
+            .join(Route)
+            .order_by(Route.name)
+            .all()
+        )
+        return [a.route for a in assignments]
 
 
 class Route(db.Model):
@@ -260,6 +283,35 @@ class Complaint(db.Model):
 
     farmer = db.relationship("Farmer", backref="complaints")
     purchase = db.relationship("Purchase")
+
+
+class QualityRecord(db.Model):
+    """A quality grade for a buying center's tea on a given day, entered by
+    the reception clerk when the tea physically arrives at the factory.
+    Kilos are never duplicated here — those live on Purchase — this just
+    grades what was already recorded as bought. One record per center per
+    day (re-submitting the same day updates it)."""
+
+    __tablename__ = "quality_records"
+
+    GRADE_SCORES = {"poor": 1, "average": 2, "good": 3}
+
+    id = db.Column(db.Integer, primary_key=True)
+    buying_center_id = db.Column(db.Integer, db.ForeignKey("buying_centers.id"), nullable=False)
+    date = db.Column(db.Date, nullable=False, default=date.today)
+    grade = db.Column(db.String(20), nullable=False)  # poor / average / good
+    notes = db.Column(db.String(300))
+    recorded_by_id = db.Column(db.Integer, db.ForeignKey("factory_users.id"), nullable=False)
+    recorded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    buying_center = db.relationship("BuyingCenter", backref="quality_records")
+    recorded_by = db.relationship("FactoryUser")
+
+    __table_args__ = (db.UniqueConstraint("buying_center_id", "date", name="uq_center_date_quality"),)
+
+    @property
+    def score(self):
+        return self.GRADE_SCORES.get(self.grade, 0)
 
 
 # Import placed at the bottom to avoid a circular import at module load time —

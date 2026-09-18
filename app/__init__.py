@@ -37,12 +37,14 @@ def create_app():
     from app.factory_auth import factory_auth_bp
     from app.manager import manager_bp
     from app.clerk import clerk_bp
+    from app.receiver import receiver_bp
     from app.api import api_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(factory_auth_bp)
     app.register_blueprint(manager_bp)
     app.register_blueprint(clerk_bp)
+    app.register_blueprint(receiver_bp)
     app.register_blueprint(api_bp)
 
     with app.app_context():

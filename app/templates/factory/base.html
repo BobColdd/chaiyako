@@ -26,6 +26,7 @@
 
     {% if current_user.is_manager %}
       <a href="{{ url_for('manager.dashboard') }}" class="nav-link {% if request.endpoint == 'manager.dashboard' %}active{% endif %}"><span class="icon">📊</span> Live Dashboard</a>
+      <a href="{{ url_for('manager.insights') }}" class="nav-link {% if request.endpoint and request.endpoint.startswith('manager.insights') %}active{% endif %}"><span class="icon">📈</span> Insights & Trends</a>
       <a href="{{ url_for('manager.farmers') }}" class="nav-link {% if request.endpoint == 'manager.farmers' %}active{% endif %}"><span class="icon">👤</span> Farmers</a>
       <a href="{{ url_for('manager.centers') }}" class="nav-link {% if request.endpoint == 'manager.centers' %}active{% endif %}"><span class="icon">📍</span> Buying Centers</a>
       <a href="{{ url_for('manager.routes') }}" class="nav-link {% if request.endpoint == 'manager.routes' %}active{% endif %}"><span class="icon">🛣️</span> Routes & Tallyboys</a>
@@ -33,6 +34,9 @@
       <a href="{{ url_for('manager.notices') }}" class="nav-link {% if request.endpoint == 'manager.notices' %}active{% endif %}"><span class="icon">📢</span> Notice Board</a>
       <a href="{{ url_for('manager.fertilizer') }}" class="nav-link {% if request.endpoint == 'manager.fertilizer' %}active{% endif %}"><span class="icon">🌱</span> Fertilizer</a>
       <a href="{{ url_for('manager.complaints') }}" class="nav-link {% if request.endpoint == 'manager.complaints' %}active{% endif %}"><span class="icon">🗣️</span> Complaints</a>
+    {% elif current_user.is_receiver %}
+      <a href="{{ url_for('receiver.home') }}" class="nav-link {% if request.endpoint == 'receiver.home' %}active{% endif %}"><span class="icon">🏭</span> Reception Desk</a>
+      <a href="{{ url_for('receiver.trends') }}" class="nav-link {% if request.endpoint and request.endpoint.startswith('receiver.trends') %}active{% endif %}"><span class="icon">📈</span> Center Trends</a>
     {% else %}
       <a href="{{ url_for('clerk.home') }}" class="nav-link active"><span class="icon">⚖️</span> Buy Tea</a>
     {% endif %}
