@@ -20,12 +20,19 @@
 </div>
 
 <div class="mobile-bar">
-  <span>{{ current_user.full_name }}</span>
+  <span class="mobile-bar-left">
+    <button type="button" class="menu-toggle" id="menu-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    </button>
+    <span>{{ current_user.full_name }}</span>
+  </span>
   <span><a href="{{ url_for('work.home') }}">My work</a><a href="{{ url_for('auth.logout') }}">Log out</a></span>
 </div>
 
+<div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
 <div class="app-shell">
-  <aside class="sidebar factory">
+  <aside class="sidebar factory" id="sidebar">
     <span class="role-badge">{{ current_user.department.name }}</span>
     <div class="brand"><span class="leaf">🏭</span> {{ factory_name }}</div>
 
@@ -36,7 +43,7 @@
       ('receiver.trends', '📈', 'Centre trends', can('VIEW_CENTRE_TRENDS') and not can('GENERATE_REPORTS')),
       ('farmers.index', '👤', 'Farmers', can('VIEW_FARMER') or can('CREATE_FARMER')),
       ('field.queue', '🌿', 'Farm verification', can('VERIFY_FARM')),
-     
+      ('management.dashboard', '📊', 'Live overview', can('GENERATE_REPORTS')),
       ('management.insights', '📈', 'Insights and trends', can('GENERATE_REPORTS')),
       ('management.transactions', '🧾', 'Transactions', can('VIEW_TRANSACTION')),
       ('management.centres', '📍', 'Buying centres', can('MANAGE_BUYING_CENTRES') or can('GENERATE_REPORTS')),
@@ -47,9 +54,11 @@
       ('admin.staff', '🧑‍💼', 'Staff and access', can('VIEW_STAFF')),
       ('management.audit', '🔍', 'Audit trail', can('VIEW_AUDIT_LOG')),
     ] %}
-    {% for endpoint, icon, label, allowed in nav if allowed %}
-      <a href="{{ url_for(endpoint) }}" class="nav-link {% if request.endpoint and request.endpoint.startswith(endpoint) %}active{% endif %}"><span class="icon">{{ icon }}</span> {{ label }}</a>
-    {% endfor %}
+    <nav class="sidebar-links">
+      {% for endpoint, icon, label, allowed in nav if allowed %}
+        <a href="{{ url_for(endpoint) }}" class="nav-link {% if request.endpoint and request.endpoint.startswith(endpoint) %}active{% endif %}"><span class="icon">{{ icon }}</span> {{ label }}</a>
+      {% endfor %}
+    </nav>
 
     <div class="sidebar-footer">
       Signed in as <strong>{{ current_user.full_name }}</strong><br>
@@ -62,6 +71,23 @@
   </main>
 </div>
 
+<script>
+(function () {
+  var toggle = document.getElementById('menu-toggle');
+  var sidebar = document.getElementById('sidebar');
+  var backdrop = document.getElementById('sidebar-backdrop');
+  if (!toggle || !sidebar || !backdrop) return;
+
+  function setOpen(open) {
+    sidebar.classList.toggle('open', open);
+    backdrop.classList.toggle('open', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  toggle.addEventListener('click', function () { setOpen(!sidebar.classList.contains('open')); });
+  backdrop.addEventListener('click', function () { setOpen(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setOpen(false); });
+})();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
