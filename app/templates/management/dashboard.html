@@ -1,0 +1,84 @@
+{% extends "layout/base.html" %}
+{% block title %}Live overview — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting">
+    <h1>📊 Live overview</h1>
+    <p>Every figure is calculated from the recorded weighings. Refresh for the latest.</p>
+  </div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card stat-1">
+    <div class="label">Kilos bought today</div>
+    <div class="value">{{ today_total|kg }}</div>
+    <div class="sub">{{ today_count }} receipt(s)</div>
+  </div>
+  <div class="stat-card stat-2">
+    <div class="label">Active farmers</div>
+    <div class="value">{{ farmer_count }}</div>
+    <div class="sub">Registered across all centres</div>
+  </div>
+  <div class="stat-card stat-4">
+    <div class="label">Farms awaiting verification</div>
+    <div class="value">{{ pending_verifications }}</div>
+    <div class="sub">With the field team</div>
+  </div>
+  <div class="stat-card stat-3">
+    <div class="label">Open complaints</div>
+    <div class="value">{{ open_complaints }}</div>
+    <div class="sub">With farmer relations</div>
+  </div>
+</div>
+
+<div class="card mb">
+  <div class="card-header"><h3>Buying centres today</h3></div>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Centre</th><th class="num">Kilos today</th><th class="num">Receipts</th><th>Last delivery</th><th>Scale</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.centre.name }}</td>
+        <td class="num">{{ "%.1f"|format(r.kilos) }}</td>
+        <td class="num">{{ r.count }}</td>
+        <td>{{ r.last|eat('%H:%M') if r.last else '—' }}</td>
+        <td>
+          {% if not r.has_scale %}<span class="muted">none registered</span>
+          {% elif r.scale_seen %}<span class="live-dot on"></span>last reading {{ r.scale_seen|eat('%d %b %H:%M') }}
+          {% else %}<span class="live-dot off"></span><span class="muted">no reading yet</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Latest receipts</h3>{% if can('VIEW_TRANSACTION') %}<a class="hint" href="{{ url_for('management.transactions') }}">All transactions</a>{% endif %}</div>
+  {% if recent %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Time</th><th>Transaction</th><th>Centre</th><th>Farm</th><th>Farmer</th><th class="num">Kilos</th><th>Clerk</th></tr></thead>
+    <tbody>
+      {% for t in recent %}
+      <tr>
+        <td>{{ t.transaction_time|eat('%H:%M') }}</td>
+        <td>{{ t.transaction_number }}</td>
+        <td>{{ t.buying_centre.name }}</td>
+        <td>{{ t.farm.farm_number }}</td>
+        <td>{{ t.farmer.full_name }}</td>
+        <td class="num">{{ "%.1f"|format(t.weight_kg) }}{% if t.status == 'VOIDED' %} <span class="tag tag-void">voided</span>{% elif t.source == 'MANUAL' %} <span class="tag tag-dept">manual</span>{% endif %}</td>
+        <td>{{ t.clerk.full_name }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty-state">Nothing recorded yet today.</p>
+  {% endif %}
+</div>
+{% endblock %}

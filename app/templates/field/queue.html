@@ -1,0 +1,55 @@
+{% extends "layout/base.html" %}
+{% block title %}Farm verification — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>🌿 Farm verification</h1><p>Visit each farm, confirm the details, and issue its farm number.</p></div>
+</div>
+
+<div class="card mb">
+  <div class="card-header"><h3>Waiting for a visit</h3><span class="hint">{{ pending|length }} farm(s)</span></div>
+  {% if pending %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Registered</th><th>Farmer</th><th>Buying centre</th><th>Location</th><th class="num">Bushes declared</th><th></th></tr></thead>
+    <tbody>
+      {% for v in pending %}
+      <tr>
+        <td>{{ v.created_at|eat('%d %b') }}</td>
+        <td>{{ v.farm.farmer.full_name }}<div class="muted" style="font-size:0.75rem;">{{ v.farm.farmer.phone }}</div></td>
+        <td>{{ v.farm.farmer.buying_centre.name }}</td>
+        <td>{{ v.farm.location or v.farm.farmer.address or '—' }}</td>
+        <td class="num">{{ v.farm.tea_bushes }}</td>
+        <td><a class="btn btn-sm btn-primary" href="{{ url_for('field.verify', verification_id=v.id) }}">Record visit</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty-state">No farms are waiting. New registrations from Customer Services appear here.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Recently completed</h3></div>
+  {% if recent %}
+  <table>
+    <thead><tr><th>Visit</th><th>Farmer</th><th>Result</th><th>Farm number</th><th>By</th></tr></thead>
+    <tbody>
+      {% for v in recent %}
+      <tr>
+        <td>{{ v.visit_date.strftime('%d %b %Y') if v.visit_date else '—' }}</td>
+        <td>{{ v.farm.farmer.full_name }}</td>
+        <td>{% if v.status == 'VERIFIED' %}<span class="badge badge-good">Verified</span>{% else %}<span class="badge badge-damaged">Rejected</span>{% endif %}</td>
+        <td>{{ v.farm.farm_number or '—' }}</td>
+        <td>{{ v.verified_by.full_name if v.verified_by else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">Nothing completed yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

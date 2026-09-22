@@ -1,0 +1,68 @@
+{% extends "layout/base.html" %}
+{% block title %}Buying centres — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>📍 Buying centres</h1><p>Where farmers deliver tea, with farmers and kilos per centre. All figures are calculated, never typed in.</p></div>
+</div>
+
+{% if can('MANAGE_BUYING_CENTRES') %}
+<div class="card mb">
+  <div class="card-header"><h3>Add a buying centre</h3></div>
+  <form method="POST" class="form-grid">
+    <div><label>Name</label><input type="text" name="name" required placeholder="e.g. Kapsuser Buying Centre"></div>
+    <div><label>Code</label><input type="text" name="code" required maxlength="10" placeholder="e.g. 039"></div>
+    <div><label>Location (optional)</label><input type="text" name="location"></div>
+    <div><label>Established (optional)</label><input type="date" name="established_at"></div>
+    <div><button class="btn btn-primary" type="submit">Add centre</button></div>
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">
+    <h3>All centres</h3>
+    <span class="hint">3 months = last 90 days · 6 months = last 180 days · Average is per farmer who delivered this month</span>
+  </div>
+  <div class="table-scroll">
+  <table>
+    <thead><tr>
+      <th>Centre</th><th class="num">Farmers</th><th class="num">Delivering</th>
+      <th class="num">This month</th><th class="num">Last month</th><th class="num">3 months</th><th class="num">6 months</th>
+      <th class="num">Avg kg / farmer</th><th>Status</th>{% if can('MANAGE_BUYING_CENTRES') %}<th></th>{% endif %}
+    </tr></thead>
+    <tbody>
+      {% for r in analysis %}
+      <tr>
+        <td>{{ r.centre.name }}<div class="muted" style="font-size:0.75rem;">{{ r.centre.code }}{% if r.centre.location %} · {{ r.centre.location }}{% endif %}</div></td>
+        <td class="num">{{ r.registered_farmers }}</td>
+        <td class="num">{{ r.active_farmers }}</td>
+        <td class="num">{{ "{:,.1f}".format(r.month_kg) }}</td>
+        <td class="num">{{ "{:,.1f}".format(r.prev_month_kg) }}</td>
+        <td class="num">{{ "{:,.1f}".format(r.three_month_kg) }}</td>
+        <td class="num">{{ "{:,.1f}".format(r.six_month_kg) }}</td>
+        <td class="num">{{ "%.1f"|format(r.avg_kg_per_farmer) }}</td>
+        <td><span class="badge {{ 'badge-good' if r.centre.is_active else 'badge-lost' }}">{{ 'Active' if r.centre.is_active else 'Inactive' }}</span></td>
+        {% if can('MANAGE_BUYING_CENTRES') %}
+        <td>
+          <details class="disclosure">
+            <summary>Edit</summary>
+            <form method="POST" action="{{ url_for('management.centre_update', centre_id=r.centre.id) }}" class="stack" style="min-width:220px;">
+              <input type="text" name="name" value="{{ r.centre.name }}" required>
+              <input type="text" name="location" value="{{ r.centre.location or '' }}" placeholder="Location">
+              <select name="status">
+                <option value="ACTIVE" {% if r.centre.is_active %}selected{% endif %}>Active</option>
+                <option value="INACTIVE" {% if not r.centre.is_active %}selected{% endif %}>Inactive</option>
+              </select>
+              <button class="btn btn-sm btn-outline" type="submit">Save</button>
+            </form>
+          </details>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

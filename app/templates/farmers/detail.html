@@ -1,0 +1,116 @@
+{% extends "layout/base.html" %}
+{% block title %}{{ farmer.full_name }} — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting">
+    <h1>{{ farmer.full_name }}</h1>
+    <p>{{ farmer.farmer_number }} · {{ farmer.buying_centre.name }} · {{ farmer.total_bushes }} tea bushes</p>
+  </div>
+  <a href="{{ url_for('farmers.index') }}" class="btn btn-outline btn-sm">← Farmers</a>
+</div>
+
+<div class="grid-2 mb">
+  <div class="card">
+    <div class="card-header"><h3>Details</h3>
+      {% if farmer.registration_status == 'VERIFIED' %}<span class="badge badge-good">Verified</span>
+      {% elif farmer.registration_status == 'REJECTED' %}<span class="badge badge-damaged">Rejected</span>
+      {% else %}<span class="badge badge-repair">Awaiting verification</span>{% endif %}
+    </div>
+    {% if can('EDIT_FARMER') %}
+    <form method="POST" action="{{ url_for('farmers.edit', farmer_id=farmer.id) }}" class="stack">
+      <div><label>Phone</label><input type="text" name="phone" value="{{ farmer.phone }}" required></div>
+      <div><label>Email</label><input type="email" name="email" value="{{ farmer.email or '' }}"></div>
+      <div><label>ID number</label><input type="text" name="identification_number" value="{{ farmer.identification_number or '' }}"></div>
+      <div><label>Address</label><input type="text" name="address" value="{{ farmer.address or '' }}"></div>
+      <button class="btn btn-primary btn-sm" type="submit" style="align-self:flex-start;">Save details</button>
+    </form>
+    {% else %}
+    <table>
+      <tr><th>Phone</th><td>{{ farmer.phone }}</td></tr>
+      <tr><th>Email</th><td>{{ farmer.email or '—' }}</td></tr>
+      <tr><th>ID number</th><td>{{ farmer.identification_number or '—' }}</td></tr>
+      <tr><th>Address</th><td>{{ farmer.address or '—' }}</td></tr>
+    </table>
+    {% endif %}
+
+    {% if can('ASSIGN_BUYING_CENTRE') %}
+    <form method="POST" action="{{ url_for('farmers.set_centre', farmer_id=farmer.id) }}" class="row" style="margin-top:16px;">
+      <select name="buying_centre_id" style="width:auto;">
+        {% for c in centres %}<option value="{{ c.id }}" {% if c.id == farmer.buying_centre_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+      </select>
+      <button class="btn btn-outline btn-sm" type="submit">Move to this centre</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>Farms</h3></div>
+    <table>
+      <thead><tr><th>Farm number</th><th class="num">Bushes</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for farm in farmer.farms %}
+        <tr>
+          <td>{{ farm.farm_number or 'Not issued yet' }}{% if farm.location %}<div class="muted" style="font-size:0.75rem;">{{ farm.location }}</div>{% endif %}</td>
+          <td class="num">{{ farm.tea_bushes }}</td>
+          <td>
+            {% if farm.verification_status == 'VERIFIED' %}<span class="badge badge-good">Verified</span>
+            {% elif farm.verification_status == 'REJECTED' %}<span class="badge badge-damaged">Rejected</span>
+            {% else %}<span class="badge badge-repair">Pending</span>{% endif %}
+          </td>
+          <td>{% if farm.is_verified %}<a class="btn btn-sm btn-outline" target="_blank" href="{{ url_for('farmers.card', farm_id=farm.id) }}">Farm card</a>{% endif %}</td>
+        </tr>
+        {% if farm.verifications %}
+        <tr><td colspan="4" class="muted" style="font-size:0.75rem;">
+          {% for v in farm.verifications if v.status != 'PENDING' %}
+            {{ v.visit_date.strftime('%d %b %Y') if v.visit_date else '' }} — {{ v.status|lower }}{% if v.verified_by %} by {{ v.verified_by.full_name }}{% endif %}{% if v.observations %}: {{ v.observations }}{% endif %}<br>
+          {% endfor %}
+        </td></tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if can('CREATE_FARMER') %}
+    <details class="disclosure" style="margin-top:14px;">
+      <summary>Add another farm</summary>
+      <form method="POST" action="{{ url_for('farmers.add_farm_route', farmer_id=farmer.id) }}" class="row">
+        <input type="number" name="tea_bushes" min="1" placeholder="Tea bushes" required style="width:130px;">
+        <input type="text" name="location" placeholder="Location" style="width:180px;">
+        <button class="btn btn-outline btn-sm" type="submit">Add farm</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+</div>
+
+{% if can('VIEW_TRANSACTION') %}
+<div class="card">
+  <div class="card-header">
+    <h3>Tea delivered</h3>
+    <span class="hint">This month {{ month_kg|kg }} · All time {{ farmer.total_kilos|kg }}</span>
+  </div>
+  {% if transactions %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>When</th><th>Transaction</th><th>Centre</th><th class="num">Kilos</th><th></th></tr></thead>
+    <tbody>
+      {% for t in transactions %}
+      <tr>
+        <td>{{ t.transaction_time|eat }}</td>
+        <td>{{ t.transaction_number }}</td>
+        <td>{{ t.buying_centre.name }}</td>
+        <td class="num">{{ "%.1f"|format(t.weight_kg) }}</td>
+        <td>{% if t.status == 'VOIDED' %}<span class="tag tag-void">voided</span>
+            {% elif t.receipt %}<a href="{{ url_for('buying.receipt_print', receipt_id=t.receipt.id) }}" target="_blank" class="muted">receipt {{ t.receipt.receipt_number }}</a>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty-state">No tea delivered yet.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

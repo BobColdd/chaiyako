@@ -1,11 +1,11 @@
-{% extends "factory/base.html" %}
-{% block title %}Reception Desk — Factory{% endblock %}
+{% extends "layout/base.html" %}
+{% block title %}Reception desk — {{ factory_name }}{% endblock %}
 {% block content %}
 
 <div class="topbar">
   <div class="greeting">
-    <h1>🏭 Habari, {{ current_user.full_name.split(' ')[0] }} 👋</h1>
-    <p>Record tea quality as it's received at the factory, and see what each buying center brought in today.</p>
+    <h1>🏭 Habari, {{ current_user.employee.first_name }} 👋</h1>
+    <p>Record tea quality as it's received at the factory, and see what each buying centre brought in today.</p>
   </div>
 </div>
 
@@ -13,7 +13,7 @@
   <div class="stat-card stat-1">
     <div class="label">Kilos received today</div>
     <div class="value">{{ "%.1f"|format(today_total) }} kg</div>
-    <div class="sub">Across all buying centers</div>
+    <div class="sub">Across all buying centres</div>
   </div>
 </div>
 
@@ -26,13 +26,13 @@
         <input type="date" name="date" value="{{ today.isoformat() }}">
       </div>
       <div>
-        <label>Buying center(s) this grade applies to</label>
-        <select name="buying_center_ids" multiple size="6" required style="width:100%; padding:8px;">
-          {% for c in centers %}
+        <label>Buying centre(s) this grade applies to</label>
+        <select name="buying_centre_ids" multiple size="6" required style="width:100%; padding:8px;">
+          {% for c in centres %}
           <option value="{{ c.id }}">{{ c.name }}</option>
           {% endfor %}
         </select>
-        <p class="hint">Hold Ctrl (or Cmd on Mac) to select more than one — e.g. if one delivery covers several centers.</p>
+        <p class="hint">Hold Ctrl (or Cmd on Mac) to select more than one — e.g. if one delivery covers several centres.</p>
       </div>
       <div>
         <label>Quality grade</label>
@@ -52,14 +52,14 @@
   </div>
 
   <div class="card">
-    <div class="card-header"><h3>📍 Today's intake by buying center</h3></div>
-    {% if center_rows %}
+    <div class="card-header"><h3>📍 Today's intake by buying centre</h3></div>
+    {% if rows %}
     <table>
-      <thead><tr><th>Center</th><th>Kilos</th><th>Quality</th></tr></thead>
+      <thead><tr><th>Centre</th><th>Kilos</th><th>Quality</th></tr></thead>
       <tbody>
-        {% for row in center_rows %}
+        {% for row in rows %}
         <tr>
-          <td>{{ row.center.name }}</td>
+          <td>{{ row.centre.name }}</td>
           <td>{{ "%.1f"|format(row.today_kilos) }} kg</td>
           <td>
             {% if row.quality_today %}
@@ -75,7 +75,7 @@
       </tbody>
     </table>
     {% else %}
-    <p class="empty-state">No buying centers set up yet.</p>
+    <p class="empty-state">No buying centres set up yet.</p>
     {% endif %}
   </div>
 </div>
@@ -84,12 +84,12 @@
   <div class="card-header"><h3>🕓 Recent quality records</h3></div>
   {% if recent_quality %}
   <table>
-    <thead><tr><th>Date</th><th>Center</th><th>Grade</th><th>Notes</th><th>Recorded by</th></tr></thead>
+    <thead><tr><th>Date</th><th>Centre</th><th>Grade</th><th>Notes</th><th>Recorded by</th></tr></thead>
     <tbody>
       {% for q in recent_quality %}
       <tr>
         <td>{{ q.date.strftime('%d %b %Y') }}</td>
-        <td>{{ q.buying_center.name }}</td>
+        <td>{{ q.buying_centre.name }}</td>
         <td>
           <span class="badge {{ 'badge-good' if q.grade == 'good' else ('badge-repair' if q.grade == 'average' else 'badge-damaged') }}">
             {{ q.grade|capitalize }}

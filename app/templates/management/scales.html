@@ -1,0 +1,59 @@
+{% extends "layout/base.html" %}
+{% block title %}Scales — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>⚖️ Weighing scales</h1><p>Each scale reports its weights to the system with its own secret key.</p></div>
+</div>
+
+{% if new_key %}
+<div class="card mb" style="border:2px solid var(--gold);">
+  <div class="card-header"><h3>Key for {{ key_for }}</h3></div>
+  <div class="key-box">{{ new_key }}</div>
+  <p class="callout">Copy this key into the scale's bridge program now. It is <strong>not shown again</strong>; if it is lost, generate a new one (the old key then stops working).</p>
+</div>
+{% endif %}
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header"><h3>Register a scale</h3></div>
+    <form method="POST" class="stack">
+      <div>
+        <label>Buying centre</label>
+        <select name="buying_centre_id" required>
+          {% for c in centres %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div><label>Scale identifier</label><input type="text" name="scale_identifier" required placeholder="e.g. SC-001"></div>
+      <div><label>Model (optional)</label><input type="text" name="model"></div>
+      <button class="btn btn-primary" type="submit" style="align-self:flex-start;">Register scale</button>
+    </form>
+    <p class="hint" style="margin-top:12px;">A small program at the centre posts each stable weight to <span class="mono">/api/scale/reading</span>. See the README for the exact call.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>Registered scales</h3></div>
+    {% if scales %}
+    <table>
+      <thead><tr><th>Scale</th><th>Centre</th><th>Last reading</th><th></th></tr></thead>
+      <tbody>
+        {% for s in scales %}
+        <tr>
+          <td>{{ s.scale_identifier }}{% if s.model %}<div class="muted" style="font-size:0.75rem;">{{ s.model }}</div>{% endif %}
+              {% if s.status != 'ACTIVE' %}<span class="tag tag-void">off</span>{% endif %}</td>
+          <td>{{ s.buying_centre.name }}</td>
+          <td>{{ s.last_seen_at|eat if s.last_seen_at else 'Never' }}</td>
+          <td class="row">
+            <form method="POST" action="{{ url_for('management.scale_toggle', scale_id=s.id) }}" class="inline-form"><button class="btn btn-sm btn-outline" type="submit">{{ 'Switch off' if s.status == 'ACTIVE' else 'Switch on' }}</button></form>
+            <form method="POST" action="{{ url_for('management.scale_rotate', scale_id=s.id) }}" class="inline-form"><button class="btn btn-sm btn-outline" type="submit">New key</button></form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No scales registered yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

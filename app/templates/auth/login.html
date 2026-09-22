@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — {{ factory_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: #ffffff; color: #111827;
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .login { width: 100%; max-width: 360px; }
+  .factory { font-size: 0.85rem; color: #6b7280; letter-spacing: 0.02em; margin-bottom: 10px; }
+  h1 { font-size: 1.9rem; font-weight: 600; margin: 0 0 28px; letter-spacing: -0.01em; }
+  label { display: block; font-size: 0.82rem; font-weight: 500; color: #374151; margin-bottom: 6px; }
+  .field { margin-bottom: 18px; }
+  input {
+    width: 100%; height: 48px; padding: 0 14px; font: inherit; font-size: 1rem; color: #111827;
+    background: #fff; border: 1px solid #d1d5db; border-radius: 10px; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus { border-color: #111827; box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.08); }
+  .password { position: relative; }
+  .password input { padding-right: 48px; }
+  .eye {
+    position: absolute; top: 0; right: 0; width: 48px; height: 48px; border: 0; background: none;
+    color: #6b7280; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 10px;
+  }
+  .eye:hover { color: #111827; }
+  .eye:focus-visible { outline: 2px solid #111827; outline-offset: -4px; }
+  .eye svg { width: 22px; height: 22px; }
+  .eye .off { display: none; }
+  .eye[aria-pressed="true"] .on { display: none; }
+  .eye[aria-pressed="true"] .off { display: block; }
+  button.submit {
+    width: 100%; height: 48px; margin-top: 6px; border: 0; border-radius: 10px; cursor: pointer;
+    background: #111827; color: #fff; font: inherit; font-size: 1rem; font-weight: 500;
+    transition: background .15s;
+  }
+  button.submit:hover { background: #1f2937; }
+  button.submit:focus-visible { outline: 3px solid rgba(17, 24, 39, 0.25); outline-offset: 2px; }
+  /* The message is plain text: no colour, no box, nothing that points at a field. */
+  .notice { margin-top: 18px; text-align: center; font-size: 0.92rem; color: #374151; min-height: 1.3em; }
+</style>
+</head>
+<body>
+  <main class="login">
+    <div class="factory">{{ factory_name }}</div>
+    <h1>Login</h1>
+
+    <form method="POST" action="{{ url_for('auth.login', next=request.args.get('next')) }}" novalidate>
+      <div class="field">
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" value="{{ username }}" autofocus
+               autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+      </div>
+
+      <div class="field">
+        <label for="password">Password</label>
+        <div class="password">
+          <input id="password" name="password" type="password" autocomplete="current-password">
+          <button type="button" class="eye" id="toggle" aria-label="Show password" aria-pressed="false">
+            <svg class="on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.9 17.9A10.4 10.4 0 0 1 12 19c-6.4 0-10-7-10-7a17.6 17.6 0 0 1 4.1-5.1M9.9 5.2A9.7 9.7 0 0 1 12 5c6.4 0 10 7 10 7a17.7 17.7 0 0 1-2.2 3.2M1 1l22 22"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <button class="submit" type="submit">Login</button>
+    </form>
+
+    <div class="notice" role="alert" aria-live="polite">
+      {%- if notice %}{{ notice }}
+      {%- else %}{% for category, message in get_flashed_messages(with_categories=true) %}{{ message }}{% if not loop.last %} {% endif %}{% endfor %}{% endif -%}
+    </div>
+  </main>
+
+<script>
+  (function () {
+    var input = document.getElementById('password');
+    var button = document.getElementById('toggle');
+    button.addEventListener('click', function () {
+      var show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      button.setAttribute('aria-pressed', show ? 'true' : 'false');
+      button.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      input.focus();
+    });
+  })();
+</script>
+</body>
+</html>

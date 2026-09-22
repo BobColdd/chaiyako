@@ -1,163 +1,109 @@
-# 🍃 Kericho Tea Tracker — Factory-Owned Edition
+# Chai Yako — Tea Factory Information Management System
 
-A factory-owned tea buying and accountability platform, built to make tea buying corruption-resistant
-and give farmers data the instant their tea is weighed — no more relying solely on the factory's own
-paper books, and no more listening for a lorry's horn to know it has arrived.
+One system for the whole factory: farmers and farms, buying centres, weighing, receipts,
+quality grading, notices, complaints, fertilizer, staff access and an audit trail.
 
-## Who uses this system
+## The tea-buying flow
 
-- **Farmers** — registered by the factory (not self-signup). See their official kilos sold, digital
-  receipts, their buying center's live status, their route's current tallyboy, the notice board,
-  fertilizer received, and can raise complaints.
-- **Clerks / Tallyboys** — log in, select which buying center on their route they're working today,
-  then scan farm cards and record kilos as tea is weighed. Their session going live/offline is what
-  turns a buying center's "green mark" on and off.
-- **Managers** — see every buying center in real time, register farmers, manage buying centers,
-  routes, and tallyboy assignments, create staff accounts, post notices, log fertilizer distribution,
-  and resolve complaints.
+1. The clerk scans the farmer's farm card. The farmer's name appears on screen.
+2. The tea is hung on the scale. The scale's weight appears on screen (the clerk never types it).
+3. The clerk clicks **Confirm and print receipt** once. In one all-or-nothing step the system
+   records the transaction (so it shows on the farmer's side) **and** issues the numbered receipt,
+   which prints automatically. A double click cannot record the tea twice.
 
-## The buying flow, end to end
+A wrong transaction is never edited or deleted: a manager **voids** it (with a reason) and the tea is weighed again.
 
-1. A manager registers a farmer under a specific buying center. The system auto-generates their farm
-   number (`{FactoryCode}{CenterCode}{Sequence}`, e.g. `CY039001`) and a barcode for their physical card.
-2. The farmer gets a verification code (currently via the SMS stub in `app/sms.py` — see below) to set
-   their own password.
-3. A clerk logs in, picks their buying center for the day — that center now shows **live** to farmers
-   and managers.
-4. The clerk swipes the farmer's card (the scanning device types the farm number into a focused input,
-   like a keyboard) and enters the weighed kilos.
-5. The purchase is saved immediately: the farmer's dashboard updates, a digital receipt is created and
-   stored permanently, and the manager's live view reflects it — all without delay.
-6. When the clerk logs out, their buying center goes quiet again.
+## Access model
 
-## Feature list
+Everyone uses the same login. What a person sees and can do comes from their **roles**, and each
+role is a set of **permissions** (see `app/catalogue.py`). A manager can lend one permission to
+someone else through a **delegation**; the audit trail records whenever a delegation was used.
+Every change writes an audit row in the same database transaction, and audit rows cannot be edited or deleted.
 
-- Factory-controlled farmer registration (no self-signup) with SMS-based first-login password setup
-- Barcode-based farm cards (Code128, printable from the manager's "Farmer Card" view)
-- Live buying-center status ("green mark") tied to clerk login/logout
-- Instant purchase recording → immediate farmer dashboard update + permanent digital receipt
-- Manager live dashboard: kilos bought today, per-center status, recent transactions across the factory
-- Routes (stable groups of buying centers) with tallyboy rotation history
-- Factory-wide or buying-center-specific notice board (prices, bonuses, fertilizer, route changes)
-- Per-farmer AND center-wide fertilizer distribution log
-- Farmer complaints (harassment, short-weighing, unfair terms, general) tied optionally to a specific
-  receipt, with manager resolution (Open → Resolved)
-- The original farmer self-tracking tools are kept alongside the official factory records: self-logged
-  plucking diary, pruning history, tool inventory, notes, tea news page, weather card, and the
-  rule-based farm assistant chatbot (including a personalized "overview" of your own records)
+| Role | Main work |
+|---|---|
+| Customer Service Officer | Registers farmers and farms, edits contact details, posts notices |
+| Field Officer | Visits farms, verifies them, issues farm numbers and cards |
+| Tea Buying Clerk | Buys tea at a buying centre (scan, weigh, confirm) |
+| Tea Buying Manager | Buying centres, scales, voiding transactions, reports |
+| Tea Receiver | Grades tea quality; sees centre-level trends (never farmer names) |
+| Farmer Relations Officer | Resolves complaints |
+| Inputs Officer | Records fertilizer distribution |
+| Finance Officer / Manager | Statements (screens arrive in a later phase) |
+| IT Officer / Manager | Accounts, roles, scales, audit trail |
+| Factory Manager | Oversight and reports |
 
-## First-time setup
+## Notices
+
+One board, three audiences: **Department** (only that department), **All staff**, and **Public**
+(farmers and visitors — served to the farmer app at `/api/public/notices`,
+optionally `?centre=<code>` for one buying centre). Public and all-staff notices need the
+`PUBLISH_NOTICE` permission.
+
+## Running it
 
 ```bash
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env            # edit SECRET_KEY if you like
+python demo_seed.py --reset        # demo data (drops every table first!)
+python run.py                      # http://127.0.0.1:5000  (the home page is the login page)
 ```
 
-**Option A — instant demo (recommended for trying it out):**
+Demo accounts all use the password `Demo@1234` (usernames: manager, customer, field, clerk,
+buyingmanager, receiver, finance, inputs, relations, it). Without `demo_seed.py` the app starts
+with the departments, permissions and roles only; create the first account with:
 
 ```bash
-python demo_seed.py
-python run.py
+python - <<'PY'
+from app import create_app
+from app.models import Role, Department
+from app.services import create_staff
+from app import db
+app = create_app()
+with app.app_context():
+    it = Role.query.filter_by(name="IT Manager").one()
+    dept = Department.query.filter_by(name="IT and Information Systems").one()
+    create_staff(None, first_name="First", last_name="Admin", username="admin", password="CHANGE-ME-now1",
+                 department_id=dept.id, role_ids=[it.id])
+    db.session.commit()
+PY
 ```
 
-This creates a fully working sample factory in one shot — a manager, two clerks (one already
-"live" at a buying center), two farmers with pre-set passwords, a route, two buying centers, ~12
-sample purchases, notices, a fertilizer record, and a complaint. Credentials are printed to your
-terminal when it finishes. Safe to run only once (checks for existing demo data first).
+**Database from the old version:** the tables changed completely. The app refuses to start on an old
+database and tells you so. For demo data use `python demo_seed.py --reset`. Real data needs a migration.
 
-**Option B — build it up yourself from scratch:**
+## Settings (environment variables)
+
+`SECRET_KEY`, `DATABASE_URL`, `FACTORY_NAME`, `FACTORY_CODE` (prefix of farm numbers, e.g. `CY039001`),
+`ALLOW_MANUAL_WEIGHT` (1 lets a clerk key in a weight while no scale is connected; every such weight is
+flagged MANUAL. Set 0 once scales are live), `WEIGHT_MAX_AGE_SECONDS`, `MAX_SINGLE_WEIGHT_KG`,
+`SESSION_COOKIE_SECURE=1` on HTTPS, `TRUST_PROXY=1` behind Render's proxy.
+
+## Connecting a weighing scale
+
+Register the scale under **Scales** (its key is shown once). A small program next to the scale posts each
+*stable* weight:
+
+```
+POST /api/scale/reading
+X-Scale-Key: <the scale's key>
+{"scale_identifier": "SC-001", "weight_kg": 18.4}
+```
+
+## Clerk mobile app API
+
+`POST /api/login` (`username` + `pin`, set with `flask --app run set-pin <username> <pin>` or on the Staff page)
+returns a bearer token. Then `GET /api/me`, `GET /api/farm/<farm_number>?buying_centre_id=`,
+`GET /api/weight/latest?buying_centre_id=`, `POST /api/buy`, `GET /api/transactions/today`.
+
+## Tests
 
 ```bash
-python seed.py                  # creates the Factory + first Manager account (interactive)
-python run.py
+python -m unittest discover tests
 ```
+The rule tests need nothing. `tests/test_flow.py` runs the whole buying flow against in-memory SQLite and
+needs the packages in `requirements.txt`.
 
-Then:
-1. Visit `/factory/login` and log in as the manager you just created.
-2. Go to **Buying Centers** → add at least one center (and optionally a route).
-3. Go to **Staff** → create a clerk/tallyboy account.
-4. Go to **Routes & Tallyboys** → create a route, add centers to it, assign the clerk.
-5. Go to **Farmers** → register a farmer under a center. Note the verification code printed to your
-   server console (the SMS stub logs it there instead of sending a real text — see below).
-6. Log in as the clerk at `/factory/login`, select the buying center, and record a purchase using the
-   farm number from step 5.
-7. Log in as the farmer at `/login` using their phone number — since no password is set yet, you'll be
-   sent to `/verify` to enter the code and set one. Then see the dashboard update with that purchase.
+## Not built yet (Phase 2)
 
-## Going live with real SMS
-
-`app/sms.py` currently just logs the message to the server console — it does **not** send real SMS.
-To wire up real delivery (Africa's Talking is the standard choice in Kenya), see the instructions in
-that file's docstring. This is deliberately decoupled so the rest of the app works end-to-end in
-development without needing a paid SMS account yet.
-
-## Deploying to Render
-
-Same as before — `render.yaml` provisions both the web service and a free Postgres database. After
-first deploy, run `python seed.py` via Render's shell to bootstrap the factory and manager account
-(you'll need to run it non-interactively or adapt it to read from environment variables for a fully
-automated deploy — the interactive prompts are meant for local/manual setup).
-
-## Project structure (what's new)
-
-```
-app/
-├── factory_models.py   # Factory, FactoryUser, BuyingCenter, Route, RouteAssignment,
-│                       # ClerkSession, Purchase, Notice, FertilizerDistribution, Complaint
-├── factory_auth.py     # staff login/logout (clerk + manager, shared login page)
-├── manager.py          # all manager routes: dashboard, farmers, centers, routes, staff,
-│                       # notices, fertilizer, complaints
-├── clerk.py            # clerk routes: select buying center, record purchases
-├── sms.py              # SMS stub — see docstring for going live
-├── models.py           # Farmer (now factory-registered, SMS-verified), Farm (+ buying_center_id),
-│                       # PluckingRecord, PruningRecord, Tool, Note  (self-tracking, unchanged)
-├── auth.py             # farmer login + first-time password verification (self-signup removed)
-├── main.py             # farmer dashboard + self-tracking + new: notices, receipts, complaints, fertilizer
-templates/
-├── factory/            # shared factory base template + staff login
-├── manager/            # manager-only pages
-├── clerk/              # clerk-only pages
-seed.py                 # one-time bootstrap: creates Factory + first Manager account
-```
-
-## Troubleshooting
-
-**"Demo logins don't work" / database looks empty:**
-
-1. **Delete any old `teafarm.db`** in the project root before seeding. `db.create_all()` only
-   creates tables that don't exist yet — it never adds new columns to a table left over from an
-   earlier version of this app. If you ever ran a previous version of this project in the same
-   folder, its old `teafarm.db` has a stale schema, and seeding will fail (or worse, silently skip
-   rows) against it. `demo_seed.py` now prints a clear error if this happens, and:
-   ```bash
-   python demo_seed.py --reset
-   ```
-   forces a full drop-and-recreate of every table before seeding, which fixes this in one step.
-
-2. **Check the printed "Using database: ..." line** — both `demo_seed.py` and `run.py` print the
-   resolved `SQLALCHEMY_DATABASE_URI` on startup now. If they show different values (e.g. one
-   points at local SQLite, the other at a Postgres URL from a stale environment variable), you're
-   seeding one database and running against another. They must match.
-
-3. `.env` is now actually loaded (it wasn't before — a real bug in the first version of this
-   config, now fixed via `python-dotenv`'s `load_dotenv()` in `config.py`). If you'd previously set
-   `DATABASE_URL` in `.env` and it seemed to have no effect, that's why — it now does.
-
-If none of that explains it, run `python demo_seed.py` and share the exact output — the script now
-reports row counts at the end (`Factories: 1  Staff: 3  Farmers: 2 ...`) and, on failure, the full
-traceback plus a plain-language next step.
-
-## Honest limitations / things worth improving next
-
-- **SMS is stubbed**, not real — see above.
-- The manager's fertilizer form asks for a farmer's internal database ID to target an individual
-  farmer, which isn't very usable yet — a proper farmer picker/search would be a quick follow-up.
-- No price/payment calculation by design (kilos only, per your instruction) — prices and bonuses are
-  communicated via the notice board instead.
-- Single-factory assumption in a few places (e.g. the open-complaints count on the manager dashboard
-  isn't scoped by factory) — fine for one factory, would need tightening for true multi-factory use.
-- I could not run this app live in this environment (no network access to install dependencies), so
-  while every Python file compiles cleanly and every template has been parsed and validated with
-  Jinja2, I'd recommend a real local smoke test (`python seed.py && python run.py`) before deploying.
+Cases and case workflow, delegation screens (the table and permission check already work),
+finance statements, farmer-facing app screens, SMS (`app/sms.py` is still a stub), and database migrations.

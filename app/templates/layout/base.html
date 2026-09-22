@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}{{ factory_name }}{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% block head %}{% endblock %}
+</head>
+<body>
+
+<div class="flash-wrap">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash flash-{{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+</div>
+
+<div class="mobile-bar">
+  <span>{{ current_user.full_name }}</span>
+  <span><a href="{{ url_for('work.home') }}">My work</a><a href="{{ url_for('auth.logout') }}">Log out</a></span>
+</div>
+
+<div class="app-shell">
+  <aside class="sidebar factory">
+    <span class="role-badge">{{ current_user.department.name }}</span>
+    <div class="brand"><span class="leaf">🏭</span> {{ factory_name }}</div>
+
+    {% set nav = [
+      ('work.home', '🗂️', 'My work', true),
+      ('buying.home', '⚖️', 'Buy tea', can('RECORD_TRANSACTION')),
+      ('receiver.home', '🏭', 'Reception desk', can('RECORD_QUALITY')),
+      ('receiver.trends', '📈', 'Centre trends', can('VIEW_CENTRE_TRENDS') and not can('GENERATE_REPORTS')),
+      ('farmers.index', '👤', 'Farmers', can('VIEW_FARMER') or can('CREATE_FARMER')),
+      ('field.queue', '🌿', 'Farm verification', can('VERIFY_FARM')),
+     
+      ('management.insights', '📈', 'Insights and trends', can('GENERATE_REPORTS')),
+      ('management.transactions', '🧾', 'Transactions', can('VIEW_TRANSACTION')),
+      ('management.centres', '📍', 'Buying centres', can('MANAGE_BUYING_CENTRES') or can('GENERATE_REPORTS')),
+      ('management.scales', '⚖️', 'Scales', can('MANAGE_SCALES')),
+      ('notices.board', '📢', 'Notice board', true),
+      ('complaints.index', '🗣️', 'Complaints', can('HANDLE_COMPLAINT')),
+      ('inputs.index', '🌱', 'Fertilizer', can('PROCESS_FERTILIZER')),
+      ('admin.staff', '🧑‍💼', 'Staff and access', can('VIEW_STAFF')),
+      ('management.audit', '🔍', 'Audit trail', can('VIEW_AUDIT_LOG')),
+    ] %}
+    {% for endpoint, icon, label, allowed in nav if allowed %}
+      <a href="{{ url_for(endpoint) }}" class="nav-link {% if request.endpoint and request.endpoint.startswith(endpoint) %}active{% endif %}"><span class="icon">{{ icon }}</span> {{ label }}</a>
+    {% endfor %}
+
+    <div class="sidebar-footer">
+      Signed in as <strong>{{ current_user.full_name }}</strong><br>
+      <a href="{{ url_for('auth.logout') }}" style="color:#f5e9c8; text-decoration:underline;">Log out</a>
+    </div>
+  </aside>
+
+  <main class="main-area">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

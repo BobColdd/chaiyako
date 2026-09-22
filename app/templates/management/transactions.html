@@ -1,0 +1,74 @@
+{% extends "layout/base.html" %}
+{% block title %}Transactions — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>🧾 Transactions</h1><p>Every weighing recorded. A wrong one is voided, never edited or deleted.</p></div>
+</div>
+
+<div class="card mb">
+  <form method="GET" class="chart-toolbar" style="margin:0;">
+    <div><label>From</label><input type="date" name="from" value="{{ start.isoformat() }}"></div>
+    <div><label>To</label><input type="date" name="to" value="{{ end.isoformat() }}"></div>
+    <div><label>Centre</label>
+      <select name="centre_id"><option value="">All centres</option>
+        {% for c in centres %}<option value="{{ c.id }}" {% if c.id == centre_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+      </select></div>
+    <div><label>Status</label>
+      <select name="status">
+        <option value="">All</option>
+        <option value="VALID" {% if status == 'VALID' %}selected{% endif %}>Valid</option>
+        <option value="VOIDED" {% if status == 'VOIDED' %}selected{% endif %}>Voided</option>
+      </select></div>
+    <div style="flex:1; min-width:200px;"><label>Search</label><input type="text" name="q" value="{{ q }}" placeholder="Name, phone, farm, receipt or transaction number"></div>
+    <div style="align-self:flex-end;"><button class="btn btn-primary btn-sm" type="submit">Show</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3>{{ rows|length }} record(s){% if capped %} (showing the latest 200){% endif %}</h3>
+    <span class="hint">Valid kilos in this view: <strong>{{ valid_total|kg }}</strong></span>
+  </div>
+  {% if rows %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>When</th><th>Transaction</th><th>Centre</th><th>Farm</th><th>Farmer</th><th class="num">Kilos</th><th>Clerk</th><th></th></tr></thead>
+    <tbody>
+      {% for t in rows %}
+      <tr>
+        <td>{{ t.transaction_time|eat }}</td>
+        <td>{{ t.transaction_number }}{% if t.receipt %}<div class="muted" style="font-size:0.72rem;">{{ t.receipt.receipt_number }}</div>{% endif %}</td>
+        <td>{{ t.buying_centre.name }}</td>
+        <td>{{ t.farm.farm_number }}</td>
+        <td>{{ t.farmer.full_name }}</td>
+        <td class="num">{{ "%.1f"|format(t.weight_kg) }}{% if t.source == 'MANUAL' %} <span class="tag tag-dept">manual</span>{% endif %}</td>
+        <td>{{ t.clerk.full_name }}</td>
+        <td>
+          {% if t.status == 'VOIDED' %}
+            <span class="tag tag-void">voided</span>
+            <div class="muted" style="font-size:0.72rem;">{{ t.void_reason }}</div>
+          {% else %}
+            {% if t.receipt %}<a class="btn btn-sm btn-outline" target="_blank" href="{{ url_for('buying.receipt_print', receipt_id=t.receipt.id) }}">Reprint</a>{% endif %}
+            {% if can('CORRECT_TRANSACTION') %}
+            <details class="disclosure" style="display:inline-block; margin-left:6px;">
+              <summary style="color:var(--danger);">Void</summary>
+              <form method="POST" action="{{ url_for('management.void', transaction_id=t.id) }}" class="stack" style="min-width:220px;">
+                <input type="hidden" name="back" value="{{ request.full_path }}">
+                <input type="text" name="reason" required minlength="5" maxlength="300" placeholder="Why is this being voided?">
+                <button class="btn btn-sm btn-danger" type="submit">Void this transaction</button>
+              </form>
+            </details>
+            {% endif %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty-state">No transactions match.</p>
+  {% endif %}
+</div>
+{% endblock %}

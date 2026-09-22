@@ -1,149 +1,101 @@
-from functools import wraps
+"""The reception desk: grade the tea each buying centre delivers, and watch centre-level trends.
+
+Trends are aggregated per buying centre and per day. The receiver never sees whose tea it was.
+"""
 from datetime import date, datetime
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, abort
-from flask_login import login_required, current_user
+from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask_login import current_user
 
 from app import db
-from app.factory_models import FactoryUser, BuyingCenter, Purchase, QualityRecord
-from app.analytics import total_kilos, daily_series, center_leaderboard, center_trend, compare_periods
+from app.analytics import (
+    active_centres, centre_leaderboard, centre_trends, compare_periods, daily_series, total_kilos,
+)
+from app.audit import log_action
+from app.models import QualityRecord
+from app.permissions import permission_required
+from app.timeutil import today_utc, utcnow
 
 receiver_bp = Blueprint("receiver", __name__, url_prefix="/receiver")
 
 
-def receiver_required(f):
-    @wraps(f)
-    def wrapped(*args, **kwargs):
-        if not isinstance(current_user, FactoryUser) or not current_user.is_receiver:
-            abort(403)
-        return f(*args, **kwargs)
-    return wrapped
-
-
-def _factory_id():
-    return current_user.factory_id
-
-
-# ---------- Reception desk: record quality, see today's intake ----------
-
 @receiver_bp.route("/", methods=["GET", "POST"])
-@login_required
-@receiver_required
+@permission_required("RECORD_QUALITY")
 def home():
-    fid = _factory_id()
-    centers = BuyingCenter.query.filter_by(factory_id=fid).order_by(BuyingCenter.name).all()
+    centres = active_centres()
+    today = today_utc()
 
     if request.method == "POST":
-        center_ids = request.form.getlist("buying_center_ids", type=int)
+        centre_ids = request.form.getlist("buying_centre_ids", type=int)
         grade = request.form.get("grade", "")
         notes = request.form.get("notes", "").strip()
-        date_str = request.form.get("date", "")
-
         try:
-            record_date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else date.today()
+            record_date = datetime.strptime(request.form.get("date", ""), "%Y-%m-%d").date()
         except ValueError:
-            record_date = date.today()
+            record_date = today
+        if record_date > today:
+            record_date = today
 
-        valid_ids = {c.id for c in centers}
-        chosen = [cid for cid in center_ids if cid in valid_ids]
-
+        valid_ids = {c.id for c in centres}
+        chosen = [cid for cid in centre_ids if cid in valid_ids]
         if not chosen or grade not in QualityRecord.GRADE_SCORES:
-            flash("Choose at least one buying center and a quality grade.", "error")
+            flash("Choose at least one buying centre and a quality grade.", "error")
             return redirect(url_for("receiver.home"))
 
-        for cid in chosen:
-            existing = QualityRecord.query.filter_by(buying_center_id=cid, date=record_date).first()
+        for centre_id in chosen:
+            existing = QualityRecord.query.filter_by(buying_centre_id=centre_id, date=record_date).first()
             if existing:
-                existing.grade = grade
-                existing.notes = notes
-                existing.recorded_by_id = current_user.id
-                existing.recorded_at = datetime.utcnow()
+                old = {"grade": existing.grade, "notes": existing.notes}
+                existing.grade, existing.notes = grade, notes or None
+                existing.recorded_by_id, existing.recorded_at = current_user.employee_id, utcnow()
+                log_action("QUALITY_UPDATED", "quality_record", existing.id, old=old, new={"grade": grade})
             else:
-                db.session.add(QualityRecord(
-                    buying_center_id=cid, date=record_date, grade=grade,
-                    notes=notes, recorded_by_id=current_user.id,
-                ))
+                record = QualityRecord(buying_centre_id=centre_id, date=record_date, grade=grade,
+                                       notes=notes or None, recorded_by_id=current_user.employee_id)
+                db.session.add(record)
+                db.session.flush()
+                log_action("QUALITY_RECORDED", "quality_record", record.id,
+                           new={"grade": grade, "date": record_date.isoformat()})
         db.session.commit()
-        flash(f"Quality recorded for {len(chosen)} buying center(s).", "success")
+        flash(f"Quality recorded for {len(chosen)} buying centre(s).", "success")
         return redirect(url_for("receiver.home"))
 
-    today = date.today()
-    leaderboard = center_leaderboard(fid, today)
-    quality_today = {q.buying_center_id: q for q in QualityRecord.query.filter_by(date=today).all()}
+    quality_today = {q.buying_centre_id: q for q in QualityRecord.query.filter_by(date=today).all()}
+    rows = [{"centre": r["centre"], "today_kilos": r["kilos"], "quality_today": quality_today.get(r["centre"].id)}
+            for r in centre_leaderboard(today)]
+    recent = QualityRecord.query.order_by(QualityRecord.recorded_at.desc()).limit(20).all()
+    return render_template("receiver/dashboard.html", centres=centres, rows=rows,
+                           today_total=sum(r["today_kilos"] for r in rows), recent_quality=recent, today=today)
 
-    center_rows = [
-        {"center": row["center"], "today_kilos": row["kilos"], "quality_today": quality_today.get(row["center"].id)}
-        for row in leaderboard
-    ]
-
-    recent_quality = (
-        QualityRecord.query.join(BuyingCenter)
-        .filter(BuyingCenter.factory_id == fid)
-        .order_by(QualityRecord.recorded_at.desc())
-        .limit(20)
-        .all()
-    )
-
-    return render_template(
-        "receiver/dashboard.html",
-        centers=centers,
-        center_rows=center_rows,
-        today_total=sum(r["today_kilos"] for r in center_rows),
-        recent_quality=recent_quality,
-        today=today,
-    )
-
-
-# ---------- Trends: same center-level analytics the manager sees, minus farmers ----------
 
 @receiver_bp.route("/trends")
-@login_required
-@receiver_required
+@permission_required("VIEW_CENTRE_TRENDS")
 def trends():
-    fid = _factory_id()
-    today = date.today()
-
-    centers = BuyingCenter.query.filter_by(factory_id=fid).order_by(BuyingCenter.name).all()
-    today_by_center = {row["center"].id: row["kilos"] for row in center_leaderboard(fid, today)}
-
-    trend_rows = []
-    for c in centers:
-        direction, pct = center_trend(fid, c.id)
-        trend_rows.append({
-            "center": c,
-            "today_kilos": today_by_center.get(c.id, 0),
-            "direction": direction,
-            "pct_change": pct,
-        })
-    trend_rows.sort(key=lambda r: r["today_kilos"], reverse=True)
-
-    return render_template(
-        "receiver/trends.html",
-        centers=centers,
-        trend_rows=trend_rows,
-        today_total=total_kilos(fid, today, today),
-    )
+    today = today_utc()
+    centres = active_centres()
+    today_by_centre = {r["centre"].id: r["kilos"] for r in centre_leaderboard(today)}
+    trend_by_centre = centre_trends()
+    rows = []
+    for c in centres:
+        direction, pct = trend_by_centre.get(c.id, ("stagnant", 0.0))
+        rows.append({"centre": c, "today_kilos": today_by_centre.get(c.id, 0.0), "direction": direction, "pct_change": pct})
+    rows.sort(key=lambda r: r["today_kilos"], reverse=True)
+    return render_template("receiver/trends.html", centres=centres, trend_rows=rows, today_total=total_kilos(today, today))
 
 
 @receiver_bp.route("/trends/series")
-@login_required
-@receiver_required
+@permission_required("VIEW_CENTRE_TRENDS")
 def trends_series():
-    fid = _factory_id()
     days = max(7, min(request.args.get("days", 30, type=int), 180))
-    center_id = request.args.get("center_id", type=int) or None
-    labels, values = daily_series(fid, days=days, center_id=center_id)
+    labels, values = daily_series(days=days, centre_id=request.args.get("centre_id", type=int) or None)
     return {"labels": labels, "values": values}
 
 
 @receiver_bp.route("/trends/compare")
-@login_required
-@receiver_required
+@permission_required("VIEW_CENTRE_TRENDS")
 def trends_compare():
-    fid = _factory_id()
-    center_id = request.args.get("center_id", type=int) or None
-    mode = request.args.get("mode", "days")
     try:
-        return compare_periods(fid, mode, request.args.get("a", ""), request.args.get("b", ""), center_id)
+        return compare_periods(request.args.get("mode", "days"), request.args.get("a", ""),
+                               request.args.get("b", ""), request.args.get("centre_id", type=int) or None)
     except (ValueError, IndexError, TypeError):
         return {"error": "Enter two valid dates to compare."}, 400

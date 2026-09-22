@@ -1,0 +1,41 @@
+{% extends "layout/base.html" %}
+{% block title %}Audit trail — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>🔍 Audit trail</h1><p>Who did what, to which record, and when. These entries can't be edited or deleted.</p></div>
+</div>
+
+<div class="card mb">
+  <form method="GET" class="chart-toolbar" style="margin:0;">
+    <div><label>Action contains</label><input type="text" name="action" value="{{ action }}" placeholder="e.g. VOIDED"></div>
+    <div><label>Record type</label>
+      <select name="entity"><option value="">All</option>
+        {% for e in entity_types %}<option value="{{ e }}" {% if e == entity %}selected{% endif %}>{{ e }}</option>{% endfor %}
+      </select></div>
+    <div style="align-self:flex-end;"><button class="btn btn-primary btn-sm" type="submit">Filter</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Latest {{ entries|length }} entries</h3></div>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Record</th><th>Authority</th><th>From</th><th>Details</th></tr></thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td>{{ e.created_at|eat }}</td>
+        <td>{{ e.user.username if e.user else '—' }}</td>
+        <td class="mono">{{ e.action }}</td>
+        <td>{{ e.entity_type or '—' }}{% if e.entity_id %} #{{ e.entity_id }}{% endif %}</td>
+        <td>{% if e.delegation_id %}<span class="tag tag-dept">delegation #{{ e.delegation_id }}</span>{% else %}<span class="muted">own role</span>{% endif %}</td>
+        <td class="muted">{{ e.ip_address or '' }}</td>
+        <td class="mono" style="max-width:340px; word-break:break-word;">{% if e.old_value %}was {{ e.old_value }}<br>{% endif %}{{ e.new_value or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

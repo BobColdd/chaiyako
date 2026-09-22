@@ -1,0 +1,104 @@
+{% extends "layout/base.html" %}
+{% block title %}Staff and access — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>🧑‍💼 Staff and access</h1><p>Everyone logs in the same way. Their roles decide what they can do.</p></div>
+</div>
+
+{% if can('CREATE_USER') %}
+<div class="card mb">
+  <div class="card-header"><h3>Create an account</h3></div>
+  <form method="POST" action="{{ url_for('admin.create') }}" class="stack">
+    <div class="form-grid">
+      <div><label>First name</label><input type="text" name="first_name" required></div>
+      <div><label>Last name</label><input type="text" name="last_name" required></div>
+      <div><label>Username</label><input type="text" name="username" required placeholder="e.g. jkiplagat" autocomplete="off"></div>
+      <div><label>Password (8+ characters)</label><input type="password" name="password" minlength="8" required autocomplete="new-password"></div>
+    </div>
+    <div class="form-grid">
+      <div><label>Phone (optional)</label><input type="text" name="phone"></div>
+      <div><label>Email (optional)</label><input type="email" name="email"></div>
+      <div>
+        <label>Department</label>
+        <select name="department_id" required>
+          {% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div><label>Mobile-app PIN (clerks, optional)</label><input type="password" name="pin" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="off"></div>
+    </div>
+    <div>
+      <label>Roles</label>
+      <div class="checks">
+        {% for r in roles %}<label title="{{ r.description }}"><input type="checkbox" name="role_ids" value="{{ r.id }}"> {{ r.name }}</label>{% endfor %}
+      </div>
+    </div>
+    <button class="btn btn-primary" type="submit" style="align-self:flex-start;">Create account</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="card mb">
+  <div class="card-header"><h3>All accounts</h3></div>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Person</th><th>Department</th><th>Roles</th><th>Last login</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.full_name }}<div class="muted" style="font-size:0.75rem;">{{ u.username }} · {{ u.employee.employee_number }}</div></td>
+        <td>{{ u.employee.department.name }}</td>
+        <td style="max-width:260px;">
+          {% for r in u.employee.roles %}<span class="tag tag-staff">{{ r.name }}</span> {% endfor %}
+          {% if can('MANAGE_PERMISSIONS') %}
+          <details class="disclosure">
+            <summary>Change roles</summary>
+            <form method="POST" action="{{ url_for('admin.user_roles', user_id=u.id) }}" class="stack">
+              <div class="checks">
+                {% for r in roles %}<label><input type="checkbox" name="role_ids" value="{{ r.id }}" {% if r in u.employee.roles %}checked{% endif %}> {{ r.name }}</label>{% endfor %}
+              </div>
+              <button class="btn btn-sm btn-outline" type="submit">Save roles</button>
+            </form>
+          </details>
+          {% endif %}
+        </td>
+        <td>{{ u.last_login_at|eat if u.last_login_at else 'Never' }}</td>
+        <td><span class="badge {{ 'badge-good' if u.is_active else 'badge-damaged' }}">{{ 'Active' if u.is_active else 'Deactivated' }}</span></td>
+        <td>
+          {% if can('CREATE_USER') %}
+          <div class="row">
+            <form method="POST" action="{{ url_for('admin.user_status', user_id=u.id) }}" class="inline-form">
+              <input type="hidden" name="active" value="{{ '0' if u.status == 'ACTIVE' else '1' }}">
+              <button class="btn btn-sm btn-outline" type="submit">{{ 'Deactivate' if u.status == 'ACTIVE' else 'Reactivate' }}</button>
+            </form>
+            <details class="disclosure">
+              <summary>Password / PIN</summary>
+              <form method="POST" action="{{ url_for('admin.user_password', user_id=u.id) }}" class="inline-form" style="margin-bottom:6px;">
+                <input type="password" name="password" minlength="8" placeholder="New password" autocomplete="new-password">
+                <button class="btn btn-sm btn-outline" type="submit">Set</button>
+              </form>
+              <form method="POST" action="{{ url_for('admin.user_pin', user_id=u.id) }}" class="inline-form">
+                <input type="password" name="pin" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" placeholder="New PIN" autocomplete="off" style="width:90px;">
+                <button class="btn btn-sm btn-outline" type="submit">Set PIN</button>
+              </form>
+            </details>
+          </div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>What each role can do</h3></div>
+  {% for r in roles %}
+  <div class="note-card">
+    <strong>{{ r.name }}</strong> <span class="muted" style="font-size:0.8rem;">— {{ r.description }}</span>
+    <div style="margin-top:6px;">{% for p in r.permissions|sort(attribute='name') %}<span class="tag tag-public" title="{{ p.description }}">{{ p.name }}</span> {% endfor %}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

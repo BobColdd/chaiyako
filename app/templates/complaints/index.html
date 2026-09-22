@@ -1,0 +1,40 @@
+{% extends "layout/base.html" %}
+{% block title %}Complaints — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>🗣️ Complaints</h1><p>Filed by farmers through the farmer app.</p></div>
+  <div class="row">
+    <a href="{{ url_for('complaints.index', status='open') }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'open' else 'btn-outline' }}">Open</a>
+    <a href="{{ url_for('complaints.index', status='resolved') }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'resolved' else 'btn-outline' }}">Resolved</a>
+    <a href="{{ url_for('complaints.index', status='all') }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'all' else 'btn-outline' }}">All</a>
+  </div>
+</div>
+
+<div class="card">
+  {% if complaints %}
+    {% for c in complaints %}
+    <div class="note-card" style="background: {% if c.status == 'resolved' %}#eafaf0{% else %}#fff7e6{% endif %};">
+      <div class="row" style="justify-content:space-between;">
+        <strong>{{ c.farmer.full_name }}</strong>
+        <span class="badge {{ 'badge-good' if c.status == 'resolved' else 'badge-repair' }}" style="text-transform:capitalize;">{{ c.status }}</span>
+      </div>
+      <div class="muted" style="font-size:0.78rem; text-transform:capitalize;">
+        {{ c.category.replace('_', ' ') }}{% if c.transaction %} · about receipt {{ c.transaction.receipt.receipt_number if c.transaction.receipt else c.transaction.transaction_number }}{% endif %}
+      </div>
+      <p style="font-size:0.88rem; margin-top:6px;">{{ c.description }}</p>
+      {% if c.resolution_note %}<p style="font-size:0.82rem; margin-top:6px;"><strong>Response:</strong> {{ c.resolution_note }}</p>{% endif %}
+      <div class="note-date">Filed {{ c.created_at|eat('%d %b %Y') }}{% if c.resolved_by %} · resolved by {{ c.resolved_by.full_name }}{% endif %}</div>
+      {% if c.status == 'open' %}
+      <form method="POST" action="{{ url_for('complaints.resolve', complaint_id=c.id) }}" class="row" style="margin-top:10px;">
+        <input type="text" name="resolution_note" placeholder="Response or resolution note (optional)" style="flex:1;">
+        <button class="btn btn-sm btn-primary" type="submit">Mark resolved</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state">No complaints in this view.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "layout/base.html" %}
+{% block title %}Choose a buying centre — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting">
+    <h1>Habari, {{ current_user.employee.first_name }} 👋</h1>
+    <p>Which buying centre are you at today?</p>
+  </div>
+</div>
+
+{% if centres %}
+<div class="card">
+  <form method="POST" action="{{ url_for('buying.set_centre') }}" class="form-grid">
+    <div>
+      <label for="buying_centre_id">Buying centre</label>
+      <select id="buying_centre_id" name="buying_centre_id" required>
+        {% for c in centres %}
+          <option value="{{ c.id }}">{{ c.name }}{% if c.location %} — {{ c.location }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div><button class="btn btn-primary" type="submit">Start buying here</button></div>
+  </form>
+  <p class="hint" style="margin-top:12px;">Every kilo you record today is filed against this centre.</p>
+</div>
+{% else %}
+<div class="card empty-state"><p>No buying centres are active yet. Ask a manager to add one.</p></div>
+{% endif %}
+
+{% endblock %}

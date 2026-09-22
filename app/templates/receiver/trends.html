@@ -1,17 +1,17 @@
-{% extends "factory/base.html" %}
-{% block title %}Center Trends — Reception{% endblock %}
+{% extends "layout/base.html" %}
+{% block title %}Centre trends — {{ factory_name }}{% endblock %}
 {% block content %}
 
 <div class="topbar">
   <div class="greeting">
-    <h1>📈 Buying Center Trends</h1>
-    <p>How much each buying center is contributing, and whether that's rising, falling, or steady.</p>
+    <h1>📈 Buying Centre Trends</h1>
+    <p>How much each buying centre is contributing, and whether that's rising, falling, or steady.</p>
   </div>
 </div>
 
 <div class="stats-grid">
   <div class="stat-card stat-1">
-    <div class="label">Today, all centers</div>
+    <div class="label">Today, all centres</div>
     <div class="value">{{ "%.1f"|format(today_total) }} kg</div>
   </div>
 </div>
@@ -20,9 +20,9 @@
   <div class="card-header"><h3>📊 Purchases over time</h3></div>
   <div class="chart-toolbar">
     <label style="font-size:0.82rem; color:var(--muted);">Show:</label>
-    <select id="chart-center">
-      <option value="">Total (all centers)</option>
-      {% for c in centers %}
+    <select id="chart-centre">
+      <option value="">Total (all centres)</option>
+      {% for c in centres %}
       <option value="{{ c.id }}">{{ c.name }}</option>
       {% endfor %}
     </select>
@@ -43,9 +43,9 @@
       <option value="days">Compare two days</option>
       <option value="months">Compare two months</option>
     </select>
-    <select id="compare-center">
-      <option value="">Total (all centers)</option>
-      {% for c in centers %}
+    <select id="compare-centre">
+      <option value="">Total (all centres)</option>
+      {% for c in centres %}
       <option value="{{ c.id }}">{{ c.name }}</option>
       {% endfor %}
     </select>
@@ -59,16 +59,16 @@
 
 <div class="card">
   <div class="card-header">
-    <h3>🏆 Buying centers today, ranked</h3>
+    <h3>🏆 Buying centres today, ranked</h3>
     <span class="hint">Trend = last 7 days average vs the 7 days before that</span>
   </div>
   <table>
-    <thead><tr><th>#</th><th>Center</th><th>Today</th><th>Trend</th></tr></thead>
+    <thead><tr><th>#</th><th>Centre</th><th>Today</th><th>Trend</th></tr></thead>
     <tbody>
       {% for row in trend_rows %}
       <tr>
         <td>{{ loop.index }}</td>
-        <td>{{ row.center.name }}</td>
+        <td>{{ row.centre.name }}</td>
         <td>{{ "%.1f"|format(row.today_kilos) }} kg</td>
         <td>
           {% if row.direction == 'improving' %}
@@ -88,20 +88,52 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<div id="chart-load-error" class="callout hidden" style="margin-bottom:16px;">
+  The charting library could not load from any source — check the internet connection on this device, then reload the page.
+</div>
 <script>
 const seriesUrl = "{{ url_for('receiver.trends_series') }}";
 const compareUrl = "{{ url_for('receiver.trends_compare') }}";
 
+// Chart.js is tried from three separate hosts in turn, since one CDN being
+// blocked on a given network (common on restricted or filtered connections)
+// doesn't mean the others are. Only after all three fail is the banner shown.
+const CHART_JS_SOURCES = [
+  "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js",
+  "https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js",
+  "https://unpkg.com/chart.js@4.4.4/dist/chart.umd.min.js",
+];
+
+function loadChartJs(sources, index) {
+  if (index >= sources.length) {
+    document.getElementById('chart-load-error').classList.remove('hidden');
+    return;
+  }
+  const tag = document.createElement('script');
+  tag.src = sources[index];
+  tag.onload = function () {
+    if (typeof Chart === 'undefined') { loadChartJs(sources, index + 1); return; }
+    initCharts();
+  };
+  tag.onerror = function () { loadChartJs(sources, index + 1); };
+  document.head.appendChild(tag);
+}
+
 let chart;
 async function loadChart() {
-  const centerId = document.getElementById('chart-center').value;
+  if (typeof Chart === 'undefined') return;
+  const centreId = document.getElementById('chart-centre').value;
   const days = document.getElementById('chart-days').value;
   const params = new URLSearchParams({ days });
-  if (centerId) params.set('center_id', centerId);
+  if (centreId) params.set('centre_id', centreId);
 
-  const res = await fetch(`${seriesUrl}?${params.toString()}`);
-  const data = await res.json();
+  let data;
+  try {
+    const res = await fetch(`${seriesUrl}?${params.toString()}`);
+    data = await res.json();
+  } catch (e) {
+    return;
+  }
 
   const ctx = document.getElementById('purchasesChart').getContext('2d');
   if (chart) chart.destroy();
@@ -128,8 +160,11 @@ async function loadChart() {
   });
 }
 
-document.getElementById('chart-center').addEventListener('change', loadChart);
+function initCharts() {
+document.getElementById('chart-centre').addEventListener('change', loadChart);
 document.getElementById('chart-days').addEventListener('change', loadChart);
+loadChart();
+}
 
 document.getElementById('compare-mode').addEventListener('change', (e) => {
   const isMonths = e.target.value === 'months';
@@ -146,7 +181,7 @@ document.getElementById('compare-mode').addEventListener('change', (e) => {
 
 async function runCompare() {
   const mode = document.getElementById('compare-mode').value;
-  const centerId = document.getElementById('compare-center').value;
+  const centreId = document.getElementById('compare-centre').value;
   let a, b;
   if (mode === 'months') {
     a = document.getElementById('compare-a-month')?.value;
@@ -161,7 +196,7 @@ async function runCompare() {
     return;
   }
   const params = new URLSearchParams({ mode, a, b });
-  if (centerId) params.set('center_id', centerId);
+  if (centreId) params.set('centre_id', centreId);
   const res = await fetch(`${compareUrl}?${params.toString()}`);
   const data = await res.json();
   if (data.error) {
@@ -179,6 +214,6 @@ async function runCompare() {
   `;
 }
 
-loadChart();
+loadChartJs(CHART_JS_SOURCES, 0);
 </script>
 {% endblock %}

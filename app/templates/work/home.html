@@ -1,0 +1,49 @@
+{% extends "layout/base.html" %}
+{% block title %}My work — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting">
+    <h1>Habari, {{ current_user.employee.first_name }} </h1>
+    <p>{{ current_user.department.name }} · {{ current_user.employee.roles|map(attribute='name')|join(', ') }}</p>
+  </div>
+</div>
+
+<h3 class="section-title">What needs you now</h3>
+{% if tasks %}
+<div class="task-grid">
+  {% for t in tasks %}
+  <a class="task-card" href="{{ t.url }}">
+    {% if t.count is not none %}<div class="task-count">{{ t.count }}</div>{% endif %}
+    <h3>{{ t.title }}</h3>
+    <p>{{ t.detail }}</p>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state mb"><p>Nothing is waiting for you. Your role's tools appear here when there is work to do.</p></div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">
+    <h3>Notices for you</h3>
+    <a class="hint" href="{{ url_for('notices.board') }}">Open the notice board</a>
+  </div>
+  {% if notices %}
+    {% for n in notices %}
+    <div class="note-card">
+      <div class="row" style="justify-content:space-between;">
+        <strong>{{ n.title }}</strong>
+        {% if n.audience == 'DEPARTMENT' %}<span class="tag tag-dept">{{ n.department.name }}</span>
+        {% elif n.audience == 'STAFF' %}<span class="tag tag-staff">All staff</span>
+        {% else %}<span class="tag tag-public">Public</span>{% endif %}
+      </div>
+      <p style="font-size:0.88rem; margin-top:4px;">{{ n.content }}</p>
+      <div class="note-date">{{ n.created_at|eat }} · {{ n.posted_by.full_name }}</div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state">No notices right now.</p>
+  {% endif %}
+</div>
+{% endblock %}

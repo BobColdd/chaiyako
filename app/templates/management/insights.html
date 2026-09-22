@@ -1,0 +1,317 @@
+{% extends "layout/base.html" %}
+{% block title %}Insights and trends — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting">
+    <h1>Insights & Trends</h1>
+    <p>How buying is actually going — per centre, per farmer, and over time.</p>
+  </div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card stat-1">
+    <div class="label">Today</div>
+    <div class="value">{{ "%.1f"|format(today_total) }} kg</div>
+  </div>
+  <div class="stat-card stat-2">
+    <div class="label">Yesterday</div>
+    <div class="value">{{ "%.1f"|format(yesterday_total) }} kg</div>
+  </div>
+  <div class="stat-card stat-4">
+    <div class="label">Last 7 days</div>
+    <div class="value">{{ "%.1f"|format(week_total) }} kg</div>
+  </div>
+  <div class="stat-card stat-3">
+    <div class="label">This month</div>
+    <div class="value">{{ "%.1f"|format(month_total) }} kg</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <h3>Purchases over time</h3>
+  </div>
+  <div class="chart-toolbar">
+    <label style="font-size:0.82rem; color:var(--muted);">Show:</label>
+    <select id="chart-centre">
+      <option value="">Total (all centres)</option>
+      {% for c in centres %}
+      <option value="{{ c.id }}">{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <label style="font-size:0.82rem; color:var(--muted);">Period:</label>
+    <select id="chart-days">
+      <option value="14">Last 14 days</option>
+      <option value="30" selected>Last 30 days</option>
+      <option value="90">Last 90 days</option>
+      <option value="180">Last 180 days</option>
+    </select>
+  </div>
+  <div class="chart-wrap"><canvas id="purchasesChart"></canvas></div>
+</div>
+
+<div class="grid-2" style="margin-bottom:20px;">
+  <div class="card">
+    <div class="card-header"><h3>Buying centres — today vs yesterday</h3></div>
+    <div class="chart-wrap" style="height:320px;"><canvas id="centreBarChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3>Tea quality mix (last 30 days)</h3></div>
+    {% if quality_counts.good + quality_counts.average + quality_counts.poor > 0 %}
+    <div class="chart-wrap" style="height:320px;"><canvas id="qualityChart"></canvas></div>
+    {% else %}
+    <p class="empty-state">No quality records from reception yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header"><h3>⚖️ Compare periods</h3></div>
+  <div class="chart-toolbar">
+    <select id="compare-mode">
+      <option value="days">Compare two days</option>
+      <option value="months">Compare two months</option>
+    </select>
+    <select id="compare-centre">
+      <option value="">Total (all centres)</option>
+      {% for c in centres %}
+      <option value="{{ c.id }}">{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <input type="date" id="compare-a">
+    <input type="month" id="compare-b-month" style="display:none;">
+    <input type="date" id="compare-b">
+    <button class="btn btn-sm btn-primary" onclick="runCompare()">Compare</button>
+  </div>
+  <div id="compare-result" class="compare-result"></div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <h3>Buying centres — today vs yesterday, and the trend</h3>
+    <span class="hint">Trend = last 7 days average vs the 7 days before that</span>
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>Centre</th><th>Today</th><th>Yesterday</th><th>Trend</th></tr></thead>
+    <tbody>
+      {% for row in trend_rows %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ row.centre.name }}</td>
+        <td>{{ "%.1f"|format(row.today_kilos) }} kg</td>
+        <td>{{ "%.1f"|format(row.yesterday_kilos) }} kg</td>
+        <td>
+          {% if row.direction == 'improving' %}
+            <span class="trend-arrow improving">▲ Improving</span> <span class="hint">({{ "%.0f"|format(row.pct_change) }}%)</span>
+          {% elif row.direction == 'dropping' %}
+            <span class="trend-arrow dropping">▼ Dropping</span> <span class="hint">({{ "%.0f"|format(row.pct_change) }}%)</span>
+          {% else %}
+            <span class="trend-arrow stagnant">■ Stagnant</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Top farmers by total kilos sold</h3></div>
+  {% if top_farmers %}
+  <table>
+    <thead><tr><th>#</th><th>Farmer</th><th>Phone</th><th>Farms</th><th class="num">Total kilos</th></tr></thead>
+    <tbody>
+      {% for f, kg in top_farmers %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td><a href="{{ url_for('farmers.detail', farmer_id=f.id) }}" style="color:var(--tea-green); font-weight:600;">{{ f.full_name }}</a></td>
+        <td>{{ f.phone }}</td>
+        <td>{% for farm in f.farms %}{{ farm.farm_number or 'pending' }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+        <td class="num">{{ "%.1f"|format(kg) }} kg</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No farmer purchases recorded yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<div id="chart-load-error" class="callout hidden" style="margin-bottom:16px;">
+  The charting library could not load from any source — check the internet connection on this device, then reload the page.
+</div>
+<script>
+const seriesUrl = "{{ url_for('management.insights_series') }}";
+const compareUrl = "{{ url_for('management.insights_compare') }}";
+const centreChartData = {{ chart_data|tojson }};
+const qualityCounts = {{ quality_counts|tojson }};
+
+// Chart.js is tried from three separate hosts in turn, since one CDN being
+// blocked on a given network (common on restricted or filtered connections)
+// doesn't mean the others are. Only after all three fail is the banner shown.
+const CHART_JS_SOURCES = [
+  "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js",
+  "https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js",
+  "https://unpkg.com/chart.js@4.4.4/dist/chart.umd.min.js",
+];
+
+function loadChartJs(sources, index) {
+  if (index >= sources.length) {
+    document.getElementById('chart-load-error').classList.remove('hidden');
+    return;
+  }
+  const tag = document.createElement('script');
+  tag.src = sources[index];
+  tag.onload = function () {
+    if (typeof Chart === 'undefined') { loadChartJs(sources, index + 1); return; }
+    initCharts();
+  };
+  tag.onerror = function () { loadChartJs(sources, index + 1); };
+  document.head.appendChild(tag);
+}
+
+let chart;
+async function loadChart() {
+  if (typeof Chart === 'undefined') return;
+  const centreId = document.getElementById('chart-centre').value;
+  const days = document.getElementById('chart-days').value;
+  const params = new URLSearchParams({ days });
+  if (centreId) params.set('centre_id', centreId);
+
+  let data;
+  try {
+    const res = await fetch(`${seriesUrl}?${params.toString()}`);
+    data = await res.json();
+  } catch (e) {
+    return;
+  }
+
+  const ctx = document.getElementById('purchasesChart').getContext('2d');
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.labels,
+      datasets: [{
+        label: 'Kilos bought',
+        data: data.values,
+        borderColor: '#1b7a43',
+        backgroundColor: 'rgba(27,122,67,0.12)',
+        fill: true,
+        tension: 0.25,
+        pointRadius: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'kg' } } }
+    }
+  });
+}
+
+function initCharts() {
+document.getElementById('chart-centre').addEventListener('change', loadChart);
+document.getElementById('chart-days').addEventListener('change', loadChart);
+
+// Buying centres — today vs yesterday, grouped bars
+if (document.getElementById('centreBarChart')) {
+  new Chart(document.getElementById('centreBarChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: centreChartData.map(r => r.name),
+      datasets: [
+        { label: 'Today', data: centreChartData.map(r => r.today), backgroundColor: '#1b7a43' },
+        { label: 'Yesterday', data: centreChartData.map(r => r.yesterday), backgroundColor: '#c9a227' },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 45, font: { size: 10 } } },
+        y: { beginAtZero: true, title: { display: true, text: 'kg' } },
+      }
+    }
+  });
+}
+
+// Quality mix donut
+if (document.getElementById('qualityChart')) {
+  new Chart(document.getElementById('qualityChart').getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Good', 'Average', 'Poor'],
+      datasets: [{
+        data: [qualityCounts.good, qualityCounts.average, qualityCounts.poor],
+        backgroundColor: ['#1c7a3c', '#c9a227', '#b83127'],
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+    }
+  });
+}
+
+loadChart();
+}
+
+document.getElementById('compare-mode').addEventListener('change', (e) => {
+  const isMonths = e.target.value === 'months';
+  document.getElementById('compare-a').style.display = isMonths ? 'none' : 'inline-block';
+  document.getElementById('compare-b').style.display = isMonths ? 'none' : 'inline-block';
+  document.getElementById('compare-a-month')?.remove();
+  if (isMonths && !document.getElementById('compare-a-month')) {
+    const a = document.createElement('input');
+    a.type = 'month'; a.id = 'compare-a-month';
+    document.getElementById('compare-a').after(a);
+  }
+  document.getElementById('compare-b-month').style.display = isMonths ? 'inline-block' : 'none';
+});
+
+async function runCompare() {
+  const mode = document.getElementById('compare-mode').value;
+  const centreId = document.getElementById('compare-centre').value;
+  let a, b;
+  if (mode === 'months') {
+    a = document.getElementById('compare-a-month')?.value;
+    b = document.getElementById('compare-b-month').value;
+  } else {
+    a = document.getElementById('compare-a').value;
+    b = document.getElementById('compare-b').value;
+  }
+  const resultEl = document.getElementById('compare-result');
+  if (!a || !b) {
+    resultEl.innerHTML = '<p class="hint">Pick both dates first.</p>';
+    return;
+  }
+  const params = new URLSearchParams({ mode, a, b });
+  if (centreId) params.set('centre_id', centreId);
+  const res = await fetch(`${compareUrl}?${params.toString()}`);
+  const data = await res.json();
+  if (data.error) {
+    resultEl.innerHTML = `<p class="hint">${data.error}</p>`;
+    return;
+  }
+  const delta = data.b.total - data.a.total;
+  const pct = data.a.total > 0 ? (delta / data.a.total * 100) : (delta > 0 ? 100 : 0);
+  const deltaColor = delta > 0 ? '#1c7a3c' : (delta < 0 ? '#b83127' : '#a6720b');
+  const arrow = delta > 0 ? '▲' : (delta < 0 ? '▼' : '■');
+  resultEl.innerHTML = `
+    <div class="compare-box"><div class="label">${data.a.label}</div><div class="value">${data.a.total.toFixed(1)} kg</div></div>
+    <div class="compare-box"><div class="label">${data.b.label}</div><div class="value">${data.b.total.toFixed(1)} kg</div></div>
+    <div class="compare-delta" style="color:${deltaColor};">${arrow} ${Math.abs(delta).toFixed(1)} kg (${Math.abs(pct).toFixed(0)}%)</div>
+  `;
+}
+
+loadChartJs(CHART_JS_SOURCES, 0);
+</script>
+{% endblock %}

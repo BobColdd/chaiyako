@@ -1,0 +1,42 @@
+{% extends "layout/base.html" %}
+{% block title %}Verify farm — {{ factory_name }}{% endblock %}
+{% block content %}
+{% set farm = verification.farm %}
+{% set farmer = farm.farmer %}
+
+<div class="topbar">
+  <div class="greeting"><h1>Verify {{ farmer.full_name }}'s farm</h1><p>{{ farmer.buying_centre.name }} · {{ farmer.phone }}</p></div>
+  <a href="{{ url_for('field.queue') }}" class="btn btn-outline btn-sm">← Back to the list</a>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header"><h3>What was registered</h3></div>
+    <table>
+      <tr><th>Farmer</th><td>{{ farmer.full_name }} ({{ farmer.farmer_number }})</td></tr>
+      <tr><th>Buying centre</th><td>{{ farmer.buying_centre.name }}</td></tr>
+      <tr><th>Location</th><td>{{ farm.location or '—' }}</td></tr>
+      <tr><th>Address</th><td>{{ farmer.address or '—' }}</td></tr>
+      <tr><th>Tea bushes declared</th><td>{{ farm.tea_bushes }}</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3>Record the visit</h3></div>
+    {% if verification.status != 'PENDING' %}
+      <p class="empty-state">This visit was already recorded ({{ verification.status|lower }}).</p>
+    {% else %}
+    <form method="POST" class="stack">
+      <div><label>Date of the visit</label><input type="date" name="visit_date" value="{{ today.isoformat() }}" max="{{ today.isoformat() }}" required></div>
+      <div><label>Tea bushes counted</label><input type="number" name="tea_bushes" min="1" value="{{ farm.tea_bushes }}" required></div>
+      <div><label>Observations</label><textarea name="observations" placeholder="What you saw. Required if you reject the farm."></textarea></div>
+      <div class="row">
+        <button class="btn btn-primary" type="submit" name="decision" value="VERIFIED">Verify and issue farm number</button>
+        <button class="btn btn-danger" type="submit" name="decision" value="REJECTED">Reject</button>
+      </div>
+      <p class="hint">Verifying issues the farm number and lets you print the farm card. The farmer's app then shows the card as ready.</p>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

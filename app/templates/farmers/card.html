@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Farm card — {{ farm.farm_number }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<style>
+  body { font-family: 'Poppins', sans-serif; background: #f3f8f3; display:flex; flex-direction:column; align-items:center; padding:40px; }
+  .card-print { width: 380px; border-radius: 18px; padding: 24px; color:#fff;
+    background: linear-gradient(135deg, #1b7a43, #0d3b24); box-shadow: 0 16px 40px rgba(13,59,36,0.25); }
+  .card-print h2 { margin:0; font-size:1.1rem; }
+  .card-print .sub { font-size:0.75rem; opacity:0.8; margin-top:2px; }
+  .farm-number { font-size:1.6rem; font-weight:700; letter-spacing:0.05em; margin-top:18px; }
+  .farmer-name { font-size:1rem; margin-top:6px; }
+  .barcode-box { background:#fff; border-radius:10px; padding:12px; margin-top:16px; text-align:center; }
+  .actions { margin-top:20px; }
+  .actions button, .actions a { background: #1b7a43; color:#fff; border:none; padding:10px 18px; border-radius:10px;
+    font-family:inherit; font-weight:600; cursor:pointer; text-decoration:none; display:inline-block; margin-right:8px; }
+  @media print { .actions { display:none; } body { background:#fff; padding:0; } }
+</style>
+</head>
+<body>
+
+<div class="card-print">
+  <h2>🍃 {{ factory_name }}</h2>
+  <div class="sub">{{ farm.farmer.buying_centre.name }}</div>
+  <div class="farm-number">{{ farm.farm_number }}</div>
+  <div class="farmer-name">{{ farm.farmer.full_name }}</div>
+  <div class="sub">{{ farm.farmer.farmer_number }} · {{ farm.farmer.phone }}</div>
+  <div class="barcode-box"><svg id="barcode"></svg></div>
+</div>
+
+<div class="actions">
+  <button onclick="window.print()">🖨️ Print card</button>
+  <a href="{{ url_for('farmers.detail', farmer_id=farm.farmer_id) if can('VIEW_FARMER') else url_for('work.home') }}">← Back</a>
+</div>
+
+<script>
+JsBarcode("#barcode", {{ farm.farm_number|tojson }}, { format: "CODE128", width: 2, height: 60, displayValue: true, fontSize: 14 });
+</script>
+</body>
+</html>

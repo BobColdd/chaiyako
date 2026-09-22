@@ -1,0 +1,103 @@
+{% extends "layout/base.html" %}
+{% block title %}Notice board — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>📢 Notice board</h1><p>Notices for your department, for all staff, and for the public.</p></div>
+  {% if can_publish %}
+  <div class="row">
+    <a class="btn btn-sm {{ 'btn-outline' if show_all else 'btn-primary' }}" href="{{ url_for('notices.board') }}">Mine</a>
+    <a class="btn btn-sm {{ 'btn-primary' if show_all else 'btn-outline' }}" href="{{ url_for('notices.board', all=1) }}">Whole factory</a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="grid-2">
+  {% if can_post or can_publish %}
+  <div class="card">
+    <div class="card-header"><h3>Post a notice</h3></div>
+    <form method="POST" action="{{ url_for('notices.create') }}" class="stack">
+      <div>
+        <label>Who is it for?</label>
+        <select name="audience" id="audience" required>
+          {% if can_post or can_publish %}<option value="DEPARTMENT">A department</option>{% endif %}
+          {% if can_publish %}
+            <option value="STAFF">All staff</option>
+            <option value="PUBLIC">The public (farmers and visitors)</option>
+          {% endif %}
+        </select>
+      </div>
+      <div id="dept-field">
+        <label>Department</label>
+        <select name="department_id">
+          {% for d in departments %}<option value="{{ d.id }}" {% if d.id == current_user.employee.department_id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div id="centre-field" class="hidden">
+        <label>Buying centre (leave as "All" to reach every farmer)</label>
+        <select name="buying_centre_id">
+          <option value="">All buying centres</option>
+          {% for c in centres %}<option value="{{ c.id }}">{{ c.name }} only</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label>Category</label>
+          <select name="category">
+            {% for c in categories %}<option value="{{ c }}">{{ c|capitalize }}</option>{% endfor %}
+          </select>
+        </div>
+        <div><label>Take it down after (optional)</label><input type="date" name="expires_on"></div>
+      </div>
+      <div><label>Title</label><input type="text" name="title" maxlength="160" required></div>
+      <div><label>Notice</label><textarea name="content" required></textarea></div>
+      <button class="btn btn-primary" type="submit" style="align-self:flex-start;">Post notice</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="card" {% if not (can_post or can_publish) %}style="grid-column: 1 / -1;"{% endif %}>
+    <div class="card-header"><h3>{{ 'Every live notice' if show_all else 'Notices you can see' }}</h3></div>
+    {% if notices %}
+      {% for n in notices %}
+      <div class="note-card">
+        <div class="row" style="justify-content:space-between;">
+          <strong>{{ n.title }}</strong>
+          <span>
+            {% if n.audience == 'DEPARTMENT' %}<span class="tag tag-dept">{{ n.department.name }}</span>
+            {% elif n.audience == 'STAFF' %}<span class="tag tag-staff">All staff</span>
+            {% else %}<span class="tag tag-public">Public{% if n.buying_centre %} · {{ n.buying_centre.name }}{% endif %}</span>{% endif %}
+          </span>
+        </div>
+        <p style="font-size:0.88rem; margin-top:4px;">{{ n.content }}</p>
+        <div class="note-date">
+          {{ n.category|capitalize }} · {{ n.created_at|eat }} · {{ n.posted_by.full_name }}{% if n.expires_at %} · until {{ n.expires_at|eat('%d %b') }}{% endif %}
+        </div>
+        {% if n.posted_by_id == current_user.employee_id or can_publish %}
+        <form method="POST" action="{{ url_for('notices.remove', notice_id=n.id) }}" style="margin-top:8px;">
+          <button class="btn btn-sm btn-outline" type="submit">Take down</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty-state">No notices right now.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const audience = document.getElementById('audience');
+  if (!audience) return;
+  function sync() {
+    document.getElementById('dept-field').classList.toggle('hidden', audience.value !== 'DEPARTMENT');
+    document.getElementById('centre-field').classList.toggle('hidden', audience.value !== 'PUBLIC');
+  }
+  audience.addEventListener('change', sync);
+  sync();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,209 @@
+{% extends "layout/base.html" %}
+{% block title %}Buying — {{ centre.name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting">
+    <h1>{{ centre.name }}</h1>
+    <p>
+      {% if scales %}
+        {% set seen = scales|selectattr('last_seen_at')|map(attribute='last_seen_at')|list %}
+        Scale {{ scales|map(attribute='scale_identifier')|join(', ') }}
+        {% if seen %}· last reading {{ (seen|max)|eat('%H:%M') }}{% else %}· no reading received yet{% endif %}
+      {% else %}
+        No scale is registered for this centre yet.
+      {% endif %}
+    </p>
+  </div>
+  <form method="POST" action="{{ url_for('buying.clear_centre') }}">
+    <button class="btn btn-outline btn-sm" type="submit">Change centre</button>
+  </form>
+</div>
+
+<div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px,1fr));">
+  <div class="stat-card stat-1">
+    <div class="label">Bought by you today</div>
+    <div class="value" id="today-total">{{ "%.1f"|format(total) }} kg</div>
+    <div class="sub"><span id="today-count">{{ transactions|selectattr('status', 'equalto', 'VALID')|list|length }}</span> receipt(s)</div>
+  </div>
+</div>
+
+<div id="result-banner" class="banner hidden"></div>
+
+<div class="buy-grid mb">
+  <div class="card">
+    <div class="step-label">1 · Scan the farmer's card</div>
+    <input type="text" id="farm-number" class="scan-input" autofocus autocomplete="off"
+           placeholder="Waiting for the scan…" aria-label="Farm number">
+    <div id="farmer-panel" class="farmer-panel muted">The farmer's name appears here.</div>
+  </div>
+
+  <div class="card">
+    <div class="step-label">2 · Put the tea on the scale</div>
+    <div id="weight-box" class="weight-readout waiting">
+      <div><span class="value" id="weight-value">—</span><span class="unit">kg</span></div>
+      <div class="state" id="weight-state">Waiting for the scale…</div>
+    </div>
+
+    {% if allow_manual %}
+    <details class="disclosure" style="margin-top:14px;">
+      <summary>Scale not connected? Enter the weight by hand</summary>
+      <div class="row">
+        <input type="number" id="manual-kilos" step="0.1" min="0" placeholder="kg" style="width:120px;">
+        <button type="button" class="btn btn-outline btn-sm" id="manual-use">Use this weight</button>
+      </div>
+      <p class="hint">Hand-entered weights are marked MANUAL on the receipt record and in the audit trail.</p>
+    </details>
+    {% endif %}
+
+    <button type="button" id="confirm" class="btn btn-primary btn-confirm" disabled>Confirm and print receipt</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Your receipts today at this centre</h3></div>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Time</th><th>Receipt</th><th>Farm</th><th>Farmer</th><th class="num">Kilos</th><th></th></tr></thead>
+    <tbody id="tx-body">
+      {% for t in transactions %}
+      <tr>
+        <td>{{ t.transaction_time|eat('%H:%M') }}</td>
+        <td>{{ t.receipt.receipt_number if t.receipt else '—' }}</td>
+        <td>{{ t.farm.farm_number }}</td>
+        <td>{{ t.farmer.full_name }}</td>
+        <td class="num">{{ "%.1f"|format(t.weight_kg) }}{% if t.status == 'VOIDED' %} <span class="tag tag-void">voided</span>{% elif t.source == 'MANUAL' %} <span class="tag tag-dept">manual</span>{% endif %}</td>
+        <td>{% if t.receipt and t.status == 'VALID' %}<a class="btn btn-sm btn-outline" target="_blank" href="{{ url_for('buying.receipt_print', receipt_id=t.receipt.id) }}">Reprint</a>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p id="tx-empty" class="empty-state {% if transactions %}hidden{% endif %}">Nothing recorded yet today.</p>
+</div>
+
+<iframe id="print-frame" title="Receipt" style="position:absolute; width:0; height:0; border:0;" aria-hidden="true"></iframe>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const lookupUrl = "{{ url_for('buying.farm_lookup') }}";
+  const weightUrl = "{{ url_for('buying.weight_latest') }}";
+  const manualUrl = "{{ url_for('buying.weight_manual') }}";
+  const confirmUrl = "{{ url_for('buying.confirm') }}";
+
+  const $ = (id) => document.getElementById(id);
+  const scan = $('farm-number'), panel = $('farmer-panel'), confirmBtn = $('confirm');
+  const weightBox = $('weight-box'), weightValue = $('weight-value'), weightState = $('weight-state');
+  const banner = $('result-banner');
+
+  let farm = null;      // the verified farm for the scanned card
+  let weight = null;    // the weight the scale is showing: {event_id, weight_kg, source}
+  let busy = false;
+
+  function say(text, ok) {
+    banner.textContent = text;
+    banner.className = 'banner ' + (ok ? 'banner-ok' : 'banner-bad');
+  }
+  function refresh() { confirmBtn.disabled = busy || !(farm && weight); }
+
+  function showFarmer(data) {
+    if (data && data.ok) {
+      farm = data;
+      panel.className = 'farmer-panel';
+      panel.innerHTML = '<div class="who"></div><div class="muted"></div>';
+      panel.firstChild.textContent = data.farmer_name;
+      panel.lastChild.textContent = data.farmer_number + ' · farm ' + data.farm_number + ' · ' + data.tea_bushes + ' bushes';
+    } else {
+      farm = null;
+      panel.className = 'farmer-panel bad';
+      panel.textContent = (data && data.error) || 'Could not check that card.';
+    }
+    refresh();
+  }
+
+  async function lookup() {
+    const number = scan.value.trim();
+    if (!number) return;
+    try {
+      const res = await fetch(lookupUrl + '?farm_number=' + encodeURIComponent(number));
+      showFarmer(await res.json());
+    } catch (e) { showFarmer({ ok: false, error: 'Could not reach the server. Check the connection.' }); }
+  }
+
+  scan.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); banner.className = 'banner hidden'; lookup(); } });
+  scan.addEventListener('input', () => { if (farm) { farm = null; panel.className = 'farmer-panel muted'; panel.textContent = 'The farmer\'s name appears here.'; refresh(); } });
+
+  function showWeight(event) {
+    weight = event;
+    if (event) {
+      weightBox.className = 'weight-readout';
+      weightValue.textContent = event.weight_kg.toFixed(1);
+      weightState.textContent = event.source === 'MANUAL' ? 'Entered by hand' : 'From the scale';
+    } else {
+      weightBox.className = 'weight-readout waiting';
+      weightValue.textContent = '—';
+      weightState.textContent = 'Waiting for the scale…';
+    }
+    refresh();
+  }
+
+  async function pollWeight() {
+    try {
+      const res = await fetch(weightUrl);
+      const data = await res.json();
+      if (!busy) showWeight(data.event || null);
+    } catch (e) { if (!busy) weightState.textContent = 'Connection lost. Retrying…'; }
+    setTimeout(pollWeight, 1500);
+  }
+
+  const manualUse = $('manual-use');
+  if (manualUse) {
+    manualUse.addEventListener('click', async () => {
+      const kilos = $('manual-kilos').value;
+      const res = await fetch(manualUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kilos: kilos }) });
+      const data = await res.json();
+      if (data.ok) { showWeight(data.event); $('manual-kilos').value = ''; } else { say(data.error, false); }
+    });
+  }
+
+  function addRow(d) {
+    const tr = document.createElement('tr');
+    const t = new Date(d.time + 'Z');
+    const time = t.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Nairobi' });
+    [time, d.receipt_number, farm ? farm.farm_number : '', d.farmer_name, d.weight_kg.toFixed(1)].forEach((text, i) => {
+      const td = document.createElement('td'); td.textContent = text; if (i === 4) td.className = 'num'; tr.appendChild(td);
+    });
+    tr.appendChild(document.createElement('td'));
+    $('tx-body').prepend(tr);
+    $('tx-empty').classList.add('hidden');
+  }
+
+  confirmBtn.addEventListener('click', async () => {
+    if (!(farm && weight) || busy) return;
+    busy = true; refresh();
+    try {
+      const res = await fetch(confirmUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ farm_number: farm.farm_number, event_id: weight.event_id }) });
+      const data = await res.json();
+      if (data.ok) {
+        say('Recorded ' + data.weight_kg.toFixed(1) + ' kg for ' + data.farmer_name + ' · receipt ' + data.receipt_number, true);
+        addRow(data);
+        const total = parseFloat($('today-total').textContent) + data.weight_kg;
+        $('today-total').textContent = total.toFixed(1) + ' kg';
+        $('today-count').textContent = parseInt($('today-count').textContent, 10) + 1;
+        $('print-frame').src = data.print_url;   // the receipt page prints itself
+        farm = null; weight = null; scan.value = '';
+        panel.className = 'farmer-panel muted'; panel.textContent = 'The farmer\'s name appears here.';
+        showWeight(null);
+        scan.focus();
+      } else { say(data.error || 'Could not record that.', false); }
+    } catch (e) { say('Could not reach the server. Nothing was recorded — try again.', false); }
+    busy = false; refresh();
+  });
+
+  pollWeight();
+})();
+</script>
+{% endblock %}

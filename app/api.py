@@ -1,27 +1,32 @@
-"""JSON API used by the clerk/tallyboy mobile app (React Native).
+"""JSON API.
 
-Everything else in this app is server-rendered HTML for the browser; this
-blueprint is the one part of the surface meant to be called by a phone. Auth
-here is a bearer token (not the Flask-Login cookie session), since a mobile
-client can't rely on cookies the way a browser can.
+Three audiences:
 
-Token = itsdangerous-signed staff id, no separate token table needed. It's
-stateless, so "logging out" of the app only ends the ClerkSession (closing
-the buying-center green mark) — it does not revoke the token itself. That's
-an acceptable trade-off for a field tool; if a phone is lost, deactivate the
-staff account (is_active_staff) to lock the token out immediately, since
-every endpoint re-checks that flag on every request.
+1. The clerk mobile app  - bearer-token login, then the same scan / weigh / confirm steps as the web screen.
+2. Weighing scales       - a small bridge program at the buying centre posts each stable weight to
+                           /api/scale/reading using that scale's own key.
+3. The farmer app/public - /api/public/notices needs no login.
+
+Everything else in the system is server-rendered HTML for browsers.
+
+The token is a signed user id (no token table). It is stateless, so /api/logout can't revoke
+it — but every request re-checks that the account is still active and still allowed to
+record tea, so deactivating an account locks a lost phone out immediately.
 """
-
+from datetime import timedelta
 from functools import wraps
-from datetime import date, datetime
 
-from flask import Blueprint, request, jsonify, current_app
-from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from flask import Blueprint, current_app, g, jsonify, request
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from app import db
-from app.factory_models import FactoryUser, ClerkSession, Purchase
-from app.models import Farm
+from app.models import BuyingCentre, TeaTransaction, User
+from app.permissions import has_permission, permission_source
+from app.services import (
+    ServiceError, confirm_weighing, create_manual_weight, find_scale, latest_pending_weight,
+    lookup_farm_for_buying, public_notices, record_scale_reading,
+)
+from app.timeutil import utcnow
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -33,205 +38,215 @@ def _serializer():
     return URLSafeTimedSerializer(current_app.config["SECRET_KEY"], salt=TOKEN_SALT)
 
 
-def make_token(staff):
-    return _serializer().dumps({"id": staff.id})
+def _iso(moment):
+    """Stored times are UTC; the trailing Z says so."""
+    return moment.isoformat() + "Z" if moment else None
 
 
-def api_login_required(f):
-    @wraps(f)
+def _staff_json(user):
+    return {"id": user.id, "full_name": user.full_name, "username": user.username}
+
+
+def api_login_required(view):
+    @wraps(view)
     def wrapped(*args, **kwargs):
-        auth = request.headers.get("Authorization", "")
-        if not auth.startswith("Bearer "):
+        header = request.headers.get("Authorization", "")
+        if not header.startswith("Bearer "):
             return jsonify(error="Missing or invalid Authorization header."), 401
-
-        token = auth.split(" ", 1)[1]
         try:
-            data = _serializer().loads(token, max_age=TOKEN_MAX_AGE)
+            data = _serializer().loads(header.split(" ", 1)[1], max_age=TOKEN_MAX_AGE)
         except SignatureExpired:
             return jsonify(error="Session expired. Please log in again."), 401
         except BadSignature:
             return jsonify(error="Invalid token."), 401
 
-        staff = FactoryUser.query.get(data.get("id"))
-        if not staff or not staff.is_clerk or not staff.is_active_staff:
-            return jsonify(error="Account not found or not an active clerk."), 401
+        user_id = data.get("uid") if isinstance(data, dict) else None
+        user = db.session.get(User, user_id) if isinstance(user_id, int) else None
+        source = permission_source(user, "RECORD_TRANSACTION") if user is not None and user.is_active else None
+        if source is None:
+            return jsonify(error="Account not found, deactivated, or not allowed to record tea."), 401
 
-        request.clerk = staff
-        return f(*args, **kwargs)
-
+        g.api_user = user
+        g.audit_user = user
+        g.acting_delegation_id = source[1]
+        return view(*args, **kwargs)
     return wrapped
 
 
-def _center_json(c):
-    return {
-        "id": c.id,
-        "name": c.name,
-        "code": c.code,
-        "location_notes": c.location_notes,
-        "is_buying_now": c.is_buying_now,
-    }
+def _centre_from_request():
+    data = request.get_json(silent=True) if request.is_json else None
+    raw = request.args.get("buying_centre_id") or (data or {}).get("buying_centre_id")
+    centre = db.session.get(BuyingCentre, int(raw)) if str(raw or "").isdigit() else None
+    if centre is None or not centre.is_active:
+        return None, (jsonify(error="Choose a valid, active buying centre (buying_centre_id)."), 400)
+    return centre, None
 
 
-def _session_json(s):
-    return {
-        "id": s.id,
-        "buying_center": _center_json(s.buying_center),
-        "login_at": s.login_at.isoformat(),
-    }
+def _event_json(event):
+    if event is None:
+        return None
+    return {"event_id": event.id, "weight_kg": event.weight_kg, "source": event.source,
+            "captured_at": _iso(event.captured_at)}
 
 
-def _purchase_json(p):
-    return {
-        "id": p.id,
-        "receipt_number": p.receipt_number,
-        "farm_number": p.farm.farm_number,
-        "farmer_name": p.farm.owner.full_name,
-        "kilos": p.kilos,
-        "purchased_at": p.purchased_at.isoformat(),
-    }
-
+# ------------------------------------------------------------------ clerk app
 
 @api_bp.route("/login", methods=["POST"])
 def login():
     data = request.get_json(silent=True) or {}
     username = (data.get("username") or "").strip().lower()
     pin = (data.get("pin") or "").strip()
+    password = data.get("password") or ""
 
-    staff = FactoryUser.query.filter_by(username=username).first()
+    user = User.query.filter_by(username=username).first()
+    if user is None:
+        credentials_ok = False
+    elif pin:
+        credentials_ok = user.check_pin(pin)
+    else:
+        credentials_ok = bool(password) and user.check_password(password)
 
-    if not staff or not staff.check_pin(pin):
+    if not credentials_ok:
         return jsonify(error="Invalid username or PIN."), 401
-
-    if not staff.is_active_staff:
-        return jsonify(error="This staff account has been deactivated."), 403
-
-    if not staff.is_clerk:
-        return jsonify(error="This app is for clerks/tallyboys only."), 403
-
-    return jsonify(
-        token=make_token(staff),
-        staff={"id": staff.id, "full_name": staff.full_name, "username": staff.username},
-    )
+    if not user.is_active:
+        return jsonify(error="This account has been deactivated."), 403
+    if not has_permission(user, "RECORD_TRANSACTION"):
+        return jsonify(error="This app is for tea buying clerks."), 403
+    return jsonify(token=_serializer().dumps({"uid": user.id}), staff=_staff_json(user))
 
 
-@api_bp.route("/me", methods=["GET"])
+@api_bp.route("/me")
 @api_login_required
 def me():
-    staff = request.clerk
-    route = staff.current_route
-    session = staff.active_session
+    centres = BuyingCentre.query.filter_by(status="ACTIVE").order_by(BuyingCentre.name).all()
     return jsonify(
-        staff={"id": staff.id, "full_name": staff.full_name, "username": staff.username},
-        route={"id": route.id, "name": route.name} if route else None,
-        centers=[_center_json(c) for c in (route.buying_centers if route else [])],
-        active_session=_session_json(session) if session else None,
+        staff=_staff_json(g.api_user),
+        centres=[{"id": c.id, "code": c.code, "name": c.name, "location": c.location} for c in centres],
+        manual_weight_allowed=bool(current_app.config["ALLOW_MANUAL_WEIGHT"]),
     )
 
 
-@api_bp.route("/select-center", methods=["POST"])
-@api_login_required
-def select_center():
-    staff = request.clerk
-    if staff.active_session:
-        return jsonify(error="You already have an active buying session. Log out to switch centers."), 400
-
-    data = request.get_json(silent=True) or {}
-    center_id = data.get("buying_center_id")
-
-    route = staff.current_route
-    valid_ids = {c.id for c in route.buying_centers} if route else set()
-    if not center_id or center_id not in valid_ids:
-        return jsonify(error="Choose a valid buying center from your route."), 400
-
-    session = ClerkSession(clerk_id=staff.id, buying_center_id=center_id)
-    db.session.add(session)
-    db.session.commit()
-    return jsonify(active_session=_session_json(session))
-
-
-@api_bp.route("/farm/<farm_number>", methods=["GET"])
+@api_bp.route("/farm/<farm_number>")
 @api_login_required
 def lookup_farm(farm_number):
-    staff = request.clerk
-    session = staff.active_session
-    if not session:
-        return jsonify(error="Select a buying center first."), 400
+    centre, error = _centre_from_request()
+    if error:
+        return error
+    try:
+        farm = lookup_farm_for_buying(farm_number, centre)
+    except ServiceError as problem:
+        return jsonify(error=str(problem)), 400
+    farmer = farm.farmer
+    return jsonify(farm_number=farm.farm_number, farmer_name=farmer.full_name,
+                   farmer_number=farmer.farmer_number, tea_bushes=farm.tea_bushes)
 
-    farm = Farm.query.filter_by(farm_number=farm_number.strip().upper()).first()
-    if not farm:
-        return jsonify(error="No farm found for that card."), 404
-    if farm.buying_center_id != session.buying_center_id:
-        return jsonify(error="This card belongs to a different buying center."), 400
 
-    return jsonify(farm_number=farm.farm_number, farmer_name=farm.owner.full_name)
+@api_bp.route("/weight/latest")
+@api_login_required
+def weight_latest():
+    centre, error = _centre_from_request()
+    if error:
+        return error
+    return jsonify(event=_event_json(latest_pending_weight(centre.id, g.api_user)))
+
+
+@api_bp.route("/weight/manual", methods=["POST"])
+@api_login_required
+def weight_manual():
+    centre, error = _centre_from_request()
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    try:
+        event = create_manual_weight(g.api_user, centre, data.get("kilos"))
+        db.session.commit()
+    except ServiceError as problem:
+        db.session.rollback()
+        return jsonify(error=str(problem)), 400
+    return jsonify(event=_event_json(event))
 
 
 @api_bp.route("/buy", methods=["POST"])
 @api_login_required
 def buy():
-    staff = request.clerk
-    session = staff.active_session
-    if not session:
-        return jsonify(error="Select a buying center first."), 400
-
+    centre, error = _centre_from_request()
+    if error:
+        return error
     data = request.get_json(silent=True) or {}
-    farm_number = (data.get("farm_number") or "").strip().upper()
-
+    raw_event_id = str(data.get("weighing_event_id", ""))
     try:
-        kilos = float(data.get("kilos"))
-    except (TypeError, ValueError):
-        kilos = None
-
-    farm = Farm.query.filter_by(farm_number=farm_number).first()
-    if not farm:
-        return jsonify(error=f"No farm found for card '{farm_number}'."), 404
-
-    if farm.buying_center_id != session.buying_center_id:
-        center_name = farm.buying_center.name if farm.buying_center else "unknown"
-        return jsonify(error=f"This card belongs to a different buying center ({center_name})."), 400
-
-    if not kilos or kilos <= 0:
-        return jsonify(error="Enter a valid weight in kilos."), 400
-
-    purchase = Purchase(
-        receipt_number=Purchase.generate_receipt_number(),
-        farm_id=farm.id,
-        buying_center_id=session.buying_center_id,
-        clerk_id=staff.id,
-        kilos=kilos,
-    )
-    db.session.add(purchase)
-    db.session.commit()
-
-    return jsonify(purchase=_purchase_json(purchase))
+        transaction, receipt = confirm_weighing(
+            g.api_user, centre, data.get("farm_number"), int(raw_event_id) if raw_event_id.isdigit() else None)
+        db.session.commit()
+    except ServiceError as problem:
+        db.session.rollback()
+        return jsonify(error=str(problem)), 400
+    return jsonify(transaction={
+        "id": transaction.id, "transaction_number": transaction.transaction_number,
+        "receipt_id": receipt.id, "receipt_number": receipt.receipt_number,
+        "farm_number": transaction.farm.farm_number, "farmer_name": transaction.farmer.full_name,
+        "buying_centre": centre.name, "weight_kg": transaction.weight_kg,
+        "transaction_time": _iso(transaction.transaction_time), "clerk": g.api_user.full_name,
+    })
 
 
-@api_bp.route("/purchases/today", methods=["GET"])
+@api_bp.route("/transactions/today")
 @api_login_required
-def purchases_today():
-    staff = request.clerk
-    session = staff.active_session
-    if not session:
-        return jsonify(purchases=[], total_kilos=0)
-
-    purchases = (
-        Purchase.query.filter_by(clerk_id=staff.id, buying_center_id=session.buying_center_id)
-        .filter(db.func.date(Purchase.purchased_at) == date.today())
-        .order_by(Purchase.purchased_at.desc())
-        .all()
-    )
+def transactions_today():
+    centre, error = _centre_from_request()
+    if error:
+        return error
+    start = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    rows = (TeaTransaction.query
+            .filter(TeaTransaction.clerk_employee_id == g.api_user.employee_id,
+                    TeaTransaction.buying_centre_id == centre.id,
+                    TeaTransaction.transaction_time >= start, TeaTransaction.transaction_time < start + timedelta(days=1))
+            .order_by(TeaTransaction.transaction_time.desc()).all())
     return jsonify(
-        purchases=[_purchase_json(p) for p in purchases],
-        total_kilos=sum(p.kilos for p in purchases),
+        transactions=[{"transaction_number": t.transaction_number, "farm_number": t.farm.farm_number,
+                       "farmer_name": t.farmer.full_name, "weight_kg": t.weight_kg, "status": t.status,
+                       "transaction_time": _iso(t.transaction_time)} for t in rows],
+        total_kg=round(sum(t.weight_kg for t in rows if t.status == "VALID"), 1),
     )
 
 
 @api_bp.route("/logout", methods=["POST"])
 @api_login_required
 def logout():
-    staff = request.clerk
-    session = staff.active_session
-    if session:
-        session.logout_at = datetime.utcnow()
+    return jsonify(ok=True)   # nothing to end: the token is stateless (see the module note)
+
+
+# ----------------------------------------------------------------- scale bridge
+
+@api_bp.route("/scale/reading", methods=["POST"])
+def scale_reading():
+    """A scale (via its bridge program) reports a stable weight.
+
+    Header:  X-Scale-Key: <the key shown once when the scale was registered>
+    Body:    {"scale_identifier": "SC-001", "weight_kg": 18.4, "reference": "optional"}
+    Send only STABLE weights: each reading replaces the previous unused one.
+    """
+    data = request.get_json(silent=True) or {}
+    scale = find_scale(data.get("scale_identifier"), request.headers.get("X-Scale-Key", ""))
+    if scale is None:
+        return jsonify(error="Unknown scale, wrong key, or the scale is switched off."), 401
+    try:
+        event = record_scale_reading(scale, data.get("weight_kg"), data.get("reference"))
         db.session.commit()
-    return jsonify(ok=True)
+    except ServiceError as problem:
+        db.session.rollback()
+        return jsonify(error=str(problem)), 400
+    return jsonify(ok=True, event_id=event.id, weight_kg=event.weight_kg)
+
+
+# ----------------------------------------------------------------------- public
+
+@api_bp.route("/public/notices")
+def public_notices_feed():
+    """Notices for farmers. Optional ?centre=<code> adds that centre's own notices to the general ones."""
+    notices = public_notices(centre_code=(request.args.get("centre") or "").strip() or None, limit=50)
+    return jsonify(notices=[{
+        "id": n.id, "category": n.category, "title": n.title, "content": n.content,
+        "buying_centre": {"code": n.buying_centre.code, "name": n.buying_centre.name} if n.buying_centre else None,
+        "posted_at": _iso(n.created_at), "expires_at": _iso(n.expires_at),
+    } for n in notices])
