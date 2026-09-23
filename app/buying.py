@@ -15,8 +15,8 @@ from app import db
 from app.models import BuyingCentre, Receipt, TeaTransaction
 from app.permissions import has_permission, permission_required
 from app.services import (
-    ServiceError, confirm_weighing, create_manual_weight, latest_pending_weight,
-    lookup_farm_for_buying, register_receipt_print,
+    ServiceError, confirm_weighing, create_manual_weight, farmers_for_buying, latest_pending_weight,
+    lookup_farm_by_farmer_number, lookup_farm_for_buying, register_receipt_print,
 )
 from app.timeutil import today_utc
 
@@ -103,6 +103,32 @@ def farm_lookup():
     farmer = farm.farmer
     return jsonify(ok=True, farm_number=farm.farm_number, farmer_name=farmer.full_name,
                    farmer_number=farmer.farmer_number, tea_bushes=farm.tea_bushes)
+
+
+@buying_bp.route("/farmer-lookup")
+@permission_required("RECORD_TRANSACTION")
+def farmer_lookup():
+    """Fallback for when the card won't scan: look the farm up by the farmer's number instead."""
+    centre, error = _centre_or_400()
+    if error:
+        return error
+    try:
+        farm = lookup_farm_by_farmer_number(request.args.get("farmer_number"), centre)
+    except ServiceError as problem:
+        return jsonify(ok=False, error=str(problem))
+    farmer = farm.farmer
+    return jsonify(ok=True, farm_number=farm.farm_number, farmer_name=farmer.full_name,
+                   farmer_number=farmer.farmer_number, tea_bushes=farm.tea_bushes)
+
+
+@buying_bp.route("/farmers")
+@permission_required("RECORD_TRANSACTION")
+def farmers_list():
+    """Farmer number + name pairs for this centre, to populate the manual-lookup dropdown."""
+    centre, error = _centre_or_400()
+    if error:
+        return error
+    return jsonify(ok=True, farmers=farmers_for_buying(centre))
 
 
 @buying_bp.route("/weight/latest")
