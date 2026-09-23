@@ -178,4 +178,4 @@ def verify_farm(actor, verification, *, decision, visit_date, observations, tea_
 def update_farmer_details(actor, farmer, *, phone, email, identification_number, address):
     cleaned_phone = rules.clean_phone(phone)
     if not cleaned_phone:
-        raise ServiceError("Enter a valid phone
+        raise ServiceError("Enter a valid phone number.")
