@@ -36,6 +36,17 @@
     <input type="text" id="farm-number" class="scan-input" autofocus autocomplete="off"
            placeholder="Waiting for the scan…" aria-label="Farm number">
     <div id="farmer-panel" class="farmer-panel muted">The farmer's name appears here.</div>
+
+    <details class="disclosure" style="margin-top:14px;">
+      <summary>Card not scanning? Look up by farmer number</summary>
+      <div class="row">
+        <input type="text" id="farmer-number-manual" list="farmer-options" autocomplete="off"
+               placeholder="Farmer number" style="width:160px;">
+        <datalist id="farmer-options"></datalist>
+        <button type="button" class="btn btn-outline btn-sm" id="farmer-lookup-use">Use this farmer</button>
+      </div>
+      <div id="farmer-manual-name" class="hint"></div>
+    </details>
   </div>
 
   <div class="card">
@@ -89,6 +100,8 @@
 <script>
 (function () {
   const lookupUrl = "{{ url_for('buying.farm_lookup') }}";
+  const farmerLookupUrl = "{{ url_for('buying.farmer_lookup') }}";
+  const farmersListUrl = "{{ url_for('buying.farmers_list') }}";
   const weightUrl = "{{ url_for('buying.weight_latest') }}";
   const manualUrl = "{{ url_for('buying.weight_manual') }}";
   const confirmUrl = "{{ url_for('buying.confirm') }}";
@@ -157,6 +170,41 @@
     } catch (e) { if (!busy) weightState.textContent = 'Connection lost. Retrying…'; }
     setTimeout(pollWeight, 1500);
   }
+
+  // Farmer-number lookup, for when the card won't scan.
+  const farmerOptions = $('farmer-options'), farmerManualInput = $('farmer-number-manual'),
+        farmerManualName = $('farmer-manual-name');
+
+  fetch(farmersListUrl).then((res) => res.json()).then((data) => {
+    if (!data.ok) return;
+    data.farmers.forEach((f) => {
+      const opt = document.createElement('option');
+      opt.value = f.farmer_number;
+      opt.label = f.name;
+      farmerOptions.appendChild(opt);
+    });
+  }).catch(() => {});
+
+  function showFarmerName() {
+    const number = farmerManualInput.value.trim();
+    const opt = Array.from(farmerOptions.options).find((o) => o.value === number);
+    farmerManualName.textContent = opt ? opt.label : '';
+  }
+  farmerManualInput.addEventListener('input', showFarmerName);
+
+  $('farmer-lookup-use').addEventListener('click', async () => {
+    const number = farmerManualInput.value.trim();
+    if (!number) return;
+    try {
+      const res = await fetch(farmerLookupUrl + '?farmer_number=' + encodeURIComponent(number));
+      const data = await res.json();
+      showFarmer(data);
+      if (data.ok) {
+        scan.value = data.farm_number;
+        farmerManualInput.value = ''; farmerManualName.textContent = '';
+      }
+    } catch (e) { showFarmer({ ok: false, error: 'Could not reach the server. Check the connection.' }); }
+  });
 
   const manualUse = $('manual-use');
   if (manualUse) {
