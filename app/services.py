@@ -432,4 +432,211 @@ def visible_notices(user, limit=None):
         Notice.audience.in_(("PUBLIC", "STAFF")),
         and_(Notice.audience == "DEPARTMENT", Notice.department_id == user.employee.department_id),
     )).order_by(Notice.created_at.desc())
-    return q
+    return query.limit(limit).all() if limit else query.all()
+
+
+def all_live_notices():
+    """Every live notice in the factory (for people who publish notices and need the whole picture)."""
+    return _live_notices().order_by(Notice.created_at.desc()).all()
+
+
+def public_notices(centre_code=None, limit=None):
+    """Notices for farmers and visitors. With a centre code: notices for everyone plus that centre's own."""
+    query = _live_notices().filter(Notice.audience == "PUBLIC")
+    if centre_code:
+        centre = BuyingCentre.query.filter_by(code=centre_code).first()
+        if centre is None:
+            return []
+        query = query.filter(or_(Notice.buying_centre_id.is_(None), Notice.buying_centre_id == centre.id))
+    query = query.order_by(Notice.created_at.desc())
+    return query.limit(limit).all() if limit else query.all()
+
+
+def create_notice(actor, *, audience, category, title, content,
+                  department_id=None, buying_centre_id=None, expires_at=None):
+    title, content = _text(title, 160), (content or "").strip()
+    if not title or not content:
+        raise ServiceError("A notice needs a title and some text.")
+    if category not in rules.NOTICE_CATEGORIES:
+        raise ServiceError("Choose a category.")
+
+    problem = rules.notice_post_problem(
+        audience,
+        can_post=has_permission(actor, "POST_NOTICE"),
+        can_publish=has_permission(actor, "PUBLISH_NOTICE"),
+        actor_department_id=actor.employee.department_id,
+        target_department_id=department_id,
+    )
+    if problem:
+        raise ServiceError(problem)
+
+    if audience == "DEPARTMENT":
+        if db.session.get(Department, department_id) is None:
+            raise ServiceError("Choose a department.")
+        buying_centre_id = None
+    elif audience == "STAFF":
+        department_id = buying_centre_id = None
+    else:  # PUBLIC
+        department_id = None
+        if buying_centre_id and db.session.get(BuyingCentre, buying_centre_id) is None:
+            raise ServiceError("Choose a valid buying centre.")
+
+    notice = Notice(
+        audience=audience, department_id=department_id, buying_centre_id=buying_centre_id or None,
+        category=category, title=title, content=content, posted_by_id=actor.employee_id, expires_at=expires_at,
+    )
+    db.session.add(notice)
+    db.session.flush()
+    log_action("NOTICE_POSTED", "notice", notice.id,
+               new={"audience": audience, "department_id": department_id, "title": title})
+    return notice
+
+
+def deactivate_notice(actor, notice):
+    if notice.posted_by_id != actor.employee_id and not has_permission(actor, "PUBLISH_NOTICE"):
+        raise ServiceError("You can only take down notices you posted.")
+    notice.is_active = False
+    log_action("NOTICE_REMOVED", "notice", notice.id, old={"title": notice.title})
+
+
+# ============================================================================
+# Staff accounts
+# ============================================================================
+
+def _username(value):
+    return (value or "").strip().lower()
+
+
+def create_staff(actor, *, first_name, last_name, username, password, department_id, role_ids,
+                 phone="", email="", pin=""):
+    first_name, last_name = _text(first_name, 80), _text(last_name, 80)
+    username = _username(username)
+    if not first_name or not last_name or not username:
+        raise ServiceError("First name, last name and username are required.")
+    if User.query.filter_by(username=username).first():
+        raise ServiceError("That username is already taken.")
+    problem = rules.password_problem(password)
+    if problem:
+        raise ServiceError(problem)
+    pin = (pin or "").strip()
+    if pin and not rules.pin_is_valid(pin):
+        raise ServiceError("A PIN must be 4 to 6 digits.")
+    department = db.session.get(Department, department_id) if department_id else None
+    if department is None:
+        raise ServiceError("Choose a department.")
+    roles = Role.query.filter(Role.id.in_(role_ids or [0]), Role.status == "ACTIVE").all()
+    if not roles:
+        raise ServiceError("Choose at least one role.")
+
+    employee = Employee(
+        employee_number=rules.format_employee_number(next_sequence("employee")),
+        first_name=first_name, last_name=last_name, phone=_text(phone, 30) or None,
+        email=_text(email, 120) or None, department_id=department.id, roles=roles,
+    )
+    db.session.add(employee)
+    db.session.flush()
+    user = User(employee_id=employee.id, username=username)
+    user.set_password(password)
+    if pin:
+        user.set_pin(pin)
+    db.session.add(user)
+    db.session.flush()
+    log_action("USER_CREATED", "user", user.id,
+               new={"username": username, "employee_number": employee.employee_number,
+                    "department": department.name, "roles": sorted(r.name for r in roles)})
+    return user
+
+
+def set_user_status(actor, user, active):
+    if user.id == actor.id and not active:
+        raise ServiceError("You cannot deactivate your own account.")
+    old = user.status
+    user.status = "ACTIVE" if active else "DISABLED"
+    log_action("USER_ACTIVATED" if active else "USER_DEACTIVATED", "user", user.id,
+               old={"status": old}, new={"status": user.status})
+
+
+def reset_password(actor, user, new_password):
+    problem = rules.password_problem(new_password)
+    if problem:
+        raise ServiceError(problem)
+    user.set_password(new_password)
+    log_action("PASSWORD_RESET", "user", user.id)
+
+
+def set_user_pin(actor, user, pin):
+    pin = (pin or "").strip()
+    if not rules.pin_is_valid(pin):
+        raise ServiceError("A PIN must be 4 to 6 digits.")
+    user.set_pin(pin)
+    log_action("PIN_SET", "user", user.id)
+
+
+def set_employee_roles(actor, employee, role_ids):
+    roles = Role.query.filter(Role.id.in_(role_ids or [0]), Role.status == "ACTIVE").all()
+    if not roles:
+        raise ServiceError("An employee needs at least one role.")
+    old = sorted(r.name for r in employee.roles)
+    employee.roles = roles
+    log_action("ROLES_CHANGED", "employee", employee.id, old={"roles": old},
+               new={"roles": sorted(r.name for r in roles)})
+
+
+# ============================================================================
+# Buying centres and scales
+# ============================================================================
+
+def create_centre(actor, *, name, code, location="", established_at=None):
+    name, code = _text(name, 120), _text(code, 10)
+    if not name or not code:
+        raise ServiceError("A buying centre needs a name and a code.")
+    if BuyingCentre.query.filter_by(code=code).first():
+        raise ServiceError("A buying centre with that code already exists.")
+    centre = BuyingCentre(name=name, code=code, location=_text(location, 200) or None, established_at=established_at)
+    db.session.add(centre)
+    db.session.flush()
+    log_action("CENTRE_CREATED", "buying_centre", centre.id, new={"code": code, "name": name})
+    return centre
+
+
+def update_centre(actor, centre, *, name, location, status):
+    name = _text(name, 120)
+    if not name:
+        raise ServiceError("A buying centre needs a name.")
+    if status not in ("ACTIVE", "INACTIVE"):
+        raise ServiceError("Choose a status.")
+    old = {"name": centre.name, "location": centre.location, "status": centre.status}
+    centre.name, centre.location, centre.status = name, _text(location, 200) or None, status
+    log_action("CENTRE_UPDATED", "buying_centre", centre.id, old=old,
+               new={"name": centre.name, "location": centre.location, "status": centre.status})
+
+
+def create_scale(actor, *, centre_id, scale_identifier, model=""):
+    """Register a scale. Returns (scale, api_key); the key is shown once and never stored in the clear."""
+    centre = db.session.get(BuyingCentre, centre_id) if centre_id else None
+    identifier = _text(scale_identifier, 60)
+    if centre is None or not identifier:
+        raise ServiceError("Choose a buying centre and give the scale an identifier.")
+    if WeighingScale.query.filter_by(scale_identifier=identifier).first():
+        raise ServiceError("A scale with that identifier already exists.")
+    key = rules.generate_api_key()
+    scale = WeighingScale(buying_centre_id=centre.id, scale_identifier=identifier,
+                          model=_text(model, 80) or None, api_key_hash=rules.hash_api_key(key))
+    db.session.add(scale)
+    db.session.flush()
+    log_action("SCALE_REGISTERED", "weighing_scale", scale.id, new={"identifier": identifier, "centre": centre.code})
+    return scale, key
+
+
+def rotate_scale_key(actor, scale):
+    key = rules.generate_api_key()
+    scale.api_key_hash = rules.hash_api_key(key)
+    scale.integration_status = "NOT_CONNECTED"
+    log_action("SCALE_KEY_ROTATED", "weighing_scale", scale.id)
+    return key
+
+
+def toggle_scale(actor, scale):
+    scale.status = "INACTIVE" if scale.status == "ACTIVE" else "ACTIVE"
+    log_action("SCALE_STATUS_CHANGED", "weighing_scale", scale.id, new={"status": scale.status})
+    return scale.status
