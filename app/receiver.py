@@ -9,7 +9,8 @@ from flask_login import current_user
 
 from app import db
 from app.analytics import (
-    active_centres, centre_leaderboard, centre_trends, compare_periods, daily_series, total_kilos,
+    active_centres, centre_trends, compare_periods, daily_series,
+    total_kilos, today_by_centre,
 )
 from app.audit import log_action
 from app.models import QualityRecord
@@ -61,11 +62,11 @@ def home():
         return redirect(url_for("receiver.home"))
 
     quality_today = {q.buying_centre_id: q for q in QualityRecord.query.filter_by(date=today).all()}
-    rows = [{"centre": r["centre"], "today_kilos": r["kilos"], "quality_today": quality_today.get(r["centre"].id)}
-            for r in centre_leaderboard(today)]
-    recent = QualityRecord.query.order_by(QualityRecord.recorded_at.desc()).limit(20).all()
-    return render_template("receiver/dashboard.html", centres=centres, rows=rows,
-                           today_total=sum(r["today_kilos"] for r in rows), recent_quality=recent, today=today)
+rows = [{"centre": r["centre"], "today_kilos": r["kilos"], "quality_today": quality_today.get(r["centre"].id)}
+        for r in centre_leaderboard(today)]
+recent = QualityRecord.query.order_by(QualityRecord.recorded_at.desc()).limit(20).all()
+return render_template("receiver/dashboard.html", centres=centres, rows=rows,
+                       today_total=sum(r["today_kilos"] for r in rows), recent_quality=recent, today=today)
 
 
 @receiver_bp.route("/trends")
