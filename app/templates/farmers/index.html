@@ -3,69 +3,82 @@
 {% block content %}
 
 <div class="topbar">
-  <div class="greeting"><h1>👤 Farmers</h1><p>Register farmers and look up their records.</p></div>
+  <div class="greeting"><h1>Farmers</h1><p>Every registered farmer, with their buying centre and verification status.</p></div>
 </div>
 
-<div class="grid-2">
-  {% if can('CREATE_FARMER') %}
-  <div class="card">
-    <div class="card-header"><h3>Register a farmer</h3></div>
+{% if can('CREATE_FARMER') %}
+<details class="reg mb" id="register">
+  <summary class="btn btn-primary">Register a farmer</summary>
+  <div class="card" style="margin-top:12px;">
     <form method="POST" action="{{ url_for('farmers.register') }}" class="stack">
       <div class="form-grid">
         <div><label>First name</label><input type="text" name="first_name" required></div>
         <div><label>Last name</label><input type="text" name="last_name" required></div>
-      </div>
-      <div class="form-grid">
         <div><label>Phone</label><input type="text" name="phone" required placeholder="07XX XXX XXX"></div>
         <div><label>Email (optional)</label><input type="email" name="email"></div>
       </div>
-      <div><label>ID number (optional)</label><input type="text" name="identification_number"></div>
-      <div><label>Address (optional)</label><input type="text" name="address"></div>
-      <div>
-        <label>Buying centre</label>
-        <select name="buying_centre_id" required>
-          {% for c in centres %}<option value="{{ c.id }}">{{ c.name }} ({{ c.code }})</option>{% endfor %}
-        </select>
-      </div>
       <div class="form-grid">
+        <div><label>ID number (optional)</label><input type="text" name="identification_number"></div>
+        <div><label>Address (optional)</label><input type="text" name="address"></div>
+        <div>
+          <label>Buying centre</label>
+          <select name="buying_centre_id" required>
+            {% for c in centres %}<option value="{{ c.id }}">{{ c.name }} ({{ c.code }})</option>{% endfor %}
+          </select>
+        </div>
         <div><label>Number of tea bushes</label><input type="number" name="tea_bushes" min="1" required></div>
         <div><label>Farm location (optional)</label><input type="text" name="location"></div>
       </div>
-      <button class="btn btn-primary" type="submit">Register and send for farm verification</button>
-      <p class="hint">The farm gets its number after a field officer visits and verifies it.</p>
+      <div class="row">
+        <button class="btn btn-primary" type="submit">Register and send for farm verification</button>
+        <span class="hint">The farm gets its number after a field officer visits and verifies it.</span>
+      </div>
     </form>
   </div>
-  {% endif %}
+</details>
+{% endif %}
 
-  {% if can('VIEW_FARMER') %}
-  <div class="card">
-    <div class="card-header">
-      <h3>Find a farmer</h3>
-      <span class="hint"><a href="{{ url_for('farmers.index', status='pending') }}">Waiting for verification</a></span>
+{% if can('VIEW_FARMER') %}
+<div class="card">
+  <div class="card-header">
+    <h3>{% if status == 'pending' %}Waiting for verification{% else %}All farmers{% endif %} <span class="muted" style="font-weight:400;">({{ farmers|length }}{% if farmers|length == 100 %}+{% endif %})</span></h3>
+    <div class="row">
+      <a href="{{ url_for('farmers.index', q=q) }}" class="btn btn-sm {{ 'btn-outline' if status == 'pending' else 'btn-primary' }}">All</a>
+      <a href="{{ url_for('farmers.index', q=q, status='pending') }}" class="btn btn-sm {{ 'btn-primary' if status == 'pending' else 'btn-outline' }}">Waiting for verification</a>
     </div>
-    <form method="GET" class="row" style="margin-bottom:16px;">
-      <input type="text" name="q" value="{{ q }}" placeholder="Name, phone, farmer number or farm number" style="flex:1;">
-      <button class="btn btn-outline btn-sm" type="submit">Search</button>
-    </form>
-
-    {% if farmers %}
-      {% for f in farmers %}
-      <a href="{{ url_for('farmers.detail', farmer_id=f.id) }}" class="note-card" style="display:block;">
-        <div class="row" style="justify-content:space-between;">
-          <strong>{{ f.full_name }}</strong>
-          {% if f.registration_status == 'VERIFIED' %}<span class="badge badge-good">Verified</span>
-          {% elif f.registration_status == 'REJECTED' %}<span class="badge badge-damaged">Rejected</span>
-          {% else %}<span class="badge badge-repair">Awaiting verification</span>{% endif %}
-        </div>
-        <div class="muted" style="font-size:0.82rem; margin-top:4px;">
-          {{ f.farmer_number }} · {{ f.phone }} · {{ f.buying_centre.name }}
-        </div>
-      </a>
-      {% endfor %}
-    {% else %}
-      <p class="empty-state">{% if q or status %}No farmers match.{% else %}Search to find a farmer.{% endif %}</p>
-    {% endif %}
   </div>
+
+  <form method="GET" class="row" style="margin-bottom:16px;">
+    {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+    <input type="text" name="q" value="{{ q }}" placeholder="Search by name, phone, farmer number or farm number" style="flex:1;">
+    <button class="btn btn-outline btn-sm" type="submit">Search</button>
+  </form>
+
+  {% if farmers %}
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Farmer</th><th>Farmer no.</th><th>Phone</th><th>Buying centre</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for f in farmers %}
+        <tr>
+          <td><a href="{{ url_for('farmers.detail', farmer_id=f.id) }}" style="font-weight:500; text-decoration:underline;">{{ f.full_name }}</a></td>
+          <td class="mono">{{ f.farmer_number }}</td>
+          <td>{{ f.phone }}</td>
+          <td>{{ f.buying_centre.name }}</td>
+          <td>
+            {% if f.registration_status == 'VERIFIED' %}<span class="badge badge-good">Verified</span>
+            {% elif f.registration_status == 'REJECTED' %}<span class="badge badge-damaged">Rejected</span>
+            {% else %}<span class="badge badge-repair">Awaiting verification</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if farmers|length == 100 %}<p class="hint" style="margin-top:12px;">Showing the latest 100. Search to narrow the list.</p>{% endif %}
+  {% else %}
+  <p class="empty-state">{% if q or status %}No farmers match.{% else %}No farmers registered yet.{% endif %}</p>
   {% endif %}
 </div>
+{% endif %}
 {% endblock %}

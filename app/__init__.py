@@ -41,7 +41,6 @@ def create_app(config_overrides=None):
 
     # ---- blueprints ---------------------------------------------------
     from app.auth import auth_bp
-    from app.work import work_bp
     from app.farmers import farmers_bp
     from app.field import field_bp
     from app.buying import buying_bp
@@ -53,7 +52,7 @@ def create_app(config_overrides=None):
     from app.inputs import inputs_bp
     from app.api import api_bp
 
-    for blueprint in (auth_bp, work_bp, farmers_bp, field_bp, buying_bp, receiver_bp,
+    for blueprint in (auth_bp, farmers_bp, field_bp, buying_bp, receiver_bp,
                       management_bp, admin_bp, notices_bp, complaints_bp, inputs_bp, api_bp):
         app.register_blueprint(blueprint)
 
@@ -62,7 +61,12 @@ def create_app(config_overrides=None):
     def template_globals():
         def can(permission):
             return current_user.is_authenticated and has_permission(current_user, permission)
-        return {"can": can, "factory_name": app.config["FACTORY_NAME"]}
+        values = {"can": can, "factory_name": app.config["FACTORY_NAME"]}
+        if current_user.is_authenticated and getattr(current_user, "employee", None) is not None:
+            from app.navigation import home_url, nav_items
+            values["nav_items"] = nav_items(current_user)
+            values["home_url"] = home_url(current_user)
+        return values
 
     @app.template_filter("eat")
     def eat_filter(moment, fmt="%d %b %Y, %H:%M"):

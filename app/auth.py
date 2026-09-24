@@ -6,6 +6,7 @@ from flask_login import current_user, login_required, login_user, logout_user
 from app import db
 from app.audit import log_action
 from app.models import User
+from app.navigation import home_endpoint
 from app.timeutil import utcnow
 
 auth_bp = Blueprint("auth", __name__)
@@ -24,7 +25,7 @@ def login():
     """The home page IS the login page, and the one login for everyone.
     What a person sees afterwards depends on their roles."""
     if current_user.is_authenticated:
-        return redirect(url_for("work.home"))
+        return redirect(url_for(home_endpoint(current_user)))
 
     if request.method == "POST":
         username = request.form.get("username", "").strip().lower()
@@ -45,7 +46,7 @@ def login():
         user.last_login_at = utcnow()
         log_action("LOGIN", "user", user.id, user=user)
         db.session.commit()
-        return redirect(_safe_next(request.args.get("next")) or url_for("work.home"))
+        return redirect(_safe_next(request.args.get("next")) or url_for(home_endpoint(user)))
 
     return render_template("auth/login.html", username="", notice=None)
 

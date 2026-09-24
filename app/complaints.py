@@ -12,7 +12,7 @@ complaints_bp = Blueprint("complaints", __name__, url_prefix="/complaints")
 
 
 @complaints_bp.route("/")
-@permission_required("HANDLE_COMPLAINT")
+@permission_required("HANDLE_COMPLAINT", "GENERATE_REPORTS")     # managers can read; only handlers can resolve
 def index():
     status = request.args.get("status", "open")
     query = Complaint.query

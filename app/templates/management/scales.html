@@ -3,11 +3,11 @@
 {% block content %}
 
 <div class="topbar">
-  <div class="greeting"><h1>⚖️ Weighing scales</h1><p>Each scale reports its weights to the system with its own secret key.</p></div>
+  <div class="greeting"><h1>Weighing scales</h1><p>Each scale reports its weights to the system with its own secret key.</p></div>
 </div>
 
 {% if new_key %}
-<div class="card mb" style="border:2px solid var(--gold);">
+<div class="card mb" style="border-color:var(--ink);">
   <div class="card-header"><h3>Key for {{ key_for }}</h3></div>
   <div class="key-box">{{ new_key }}</div>
   <p class="callout">Copy this key into the scale's bridge program now. It is <strong>not shown again</strong>; if it is lost, generate a new one (the old key then stops working).</p>

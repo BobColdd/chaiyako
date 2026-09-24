@@ -124,7 +124,7 @@ def farmer_lookup():
 @buying_bp.route("/farmers")
 @permission_required("RECORD_TRANSACTION")
 def farmers_list():
-    """Farmer number + name pairs for this centre, to populate the manual-lookup dropdown."""
+    """The farmers of this centre, for the list that filters as the clerk types a farmer number."""
     centre, error = _centre_or_400()
     if error:
         return error

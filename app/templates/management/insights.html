@@ -67,7 +67,7 @@
 </div>
 
 <div class="card" style="margin-bottom:20px;">
-  <div class="card-header"><h3>⚖️ Compare periods</h3></div>
+  <div class="card-header"><h3>Compare periods</h3></div>
   <div class="chart-toolbar">
     <select id="compare-mode">
       <option value="days">Compare two days</option>
@@ -125,7 +125,7 @@
       {% for f, kg in top_farmers %}
       <tr>
         <td>{{ loop.index }}</td>
-        <td><a href="{{ url_for('farmers.detail', farmer_id=f.id) }}" style="color:var(--tea-green); font-weight:600;">{{ f.full_name }}</a></td>
+        <td><a href="{{ url_for('farmers.detail', farmer_id=f.id) }}" style="font-weight:500; text-decoration:underline;">{{ f.full_name }}</a></td>
         <td>{{ f.phone }}</td>
         <td>{% for farm in f.farms %}{{ farm.farm_number or 'pending' }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
         <td class="num">{{ "%.1f"|format(kg) }} kg</td>
@@ -199,8 +199,8 @@ async function loadChart() {
       datasets: [{
         label: 'Kilos bought',
         data: data.values,
-        borderColor: '#1b7a43',
-        backgroundColor: 'rgba(27,122,67,0.12)',
+        borderColor: '#111827',
+        backgroundColor: 'rgba(17,24,39,0.06)',
         fill: true,
         tension: 0.25,
         pointRadius: 2,
@@ -226,8 +226,8 @@ if (document.getElementById('centreBarChart')) {
     data: {
       labels: centreChartData.map(r => r.name),
       datasets: [
-        { label: 'Today', data: centreChartData.map(r => r.today), backgroundColor: '#1b7a43' },
-        { label: 'Yesterday', data: centreChartData.map(r => r.yesterday), backgroundColor: '#c9a227' },
+        { label: 'Today', data: centreChartData.map(r => r.today), backgroundColor: '#111827' },
+        { label: 'Yesterday', data: centreChartData.map(r => r.yesterday), backgroundColor: '#d1d5db' },
       ]
     },
     options: {
@@ -250,7 +250,7 @@ if (document.getElementById('qualityChart')) {
       labels: ['Good', 'Average', 'Poor'],
       datasets: [{
         data: [qualityCounts.good, qualityCounts.average, qualityCounts.poor],
-        backgroundColor: ['#1c7a3c', '#c9a227', '#b83127'],
+        backgroundColor: ['#166534', '#b45309', '#991b1b'],
       }]
     },
     options: {
@@ -303,7 +303,7 @@ async function runCompare() {
   }
   const delta = data.b.total - data.a.total;
   const pct = data.a.total > 0 ? (delta / data.a.total * 100) : (delta > 0 ? 100 : 0);
-  const deltaColor = delta > 0 ? '#1c7a3c' : (delta < 0 ? '#b83127' : '#a6720b');
+  const deltaColor = delta > 0 ? '#166534' : (delta < 0 ? '#991b1b' : '#92400e');
   const arrow = delta > 0 ? '▲' : (delta < 0 ? '▼' : '■');
   resultEl.innerHTML = `
     <div class="compare-box"><div class="label">${data.a.label}</div><div class="value">${data.a.total.toFixed(1)} kg</div></div>

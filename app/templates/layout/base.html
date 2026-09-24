@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}{{ factory_name }}{% endblock %}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 {% block head %}{% endblock %}
 </head>
@@ -24,45 +24,32 @@
     <button type="button" class="menu-toggle" id="menu-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
     </button>
+    <a href="{{ url_for('notices.board') }}" class="bell {% if request.endpoint and request.endpoint.startswith('notices.') %}active{% endif %}" aria-label="Notices" title="Notices"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></a>
     <span>{{ current_user.full_name }}</span>
   </span>
-  <span><a href="{{ url_for('work.home') }}">My work</a><a href="{{ url_for('auth.logout') }}">Log out</a></span>
+  <span><a href="{{ url_for('auth.logout') }}">Log out</a></span>
 </div>
 
 <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
 <div class="app-shell">
+  <img class="leaf-corner" src="{{ url_for('static', filename='img/tea-leaf.png') }}" alt="" aria-hidden="true">
   <aside class="sidebar factory" id="sidebar">
-    <span class="role-badge">{{ current_user.department.name }}</span>
-    <div class="brand"><span class="leaf">🏭</span> {{ factory_name }}</div>
+    <div class="sidebar-top">
+      <a href="{{ url_for('notices.board') }}" class="bell {% if request.endpoint and request.endpoint.startswith('notices.') %}active{% endif %}" aria-label="Notices" title="Notices"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></a>
+      <span class="role-badge">{{ current_user.department.name }}</span>
+    </div>
+    <div class="brand">{{ factory_name }}</div>
 
-    {% set nav = [
-      ('work.home', '🗂️', 'My work', true),
-      ('buying.home', '⚖️', 'Buy tea', can('RECORD_TRANSACTION')),
-      ('receiver.home', '🏭', 'Reception desk', can('RECORD_QUALITY')),
-      ('receiver.trends', '📈', 'Centre trends', can('VIEW_CENTRE_TRENDS') and not can('GENERATE_REPORTS')),
-      ('farmers.index', '👤', 'Farmers', can('VIEW_FARMER') or can('CREATE_FARMER')),
-      ('field.queue', '🌿', 'Farm verification', can('VERIFY_FARM')),
-      ('management.dashboard', '📊', 'Live overview', can('GENERATE_REPORTS')),
-      ('management.insights', '📈', 'Insights and trends', can('GENERATE_REPORTS')),
-      ('management.transactions', '🧾', 'Transactions', can('VIEW_TRANSACTION')),
-      ('management.centres', '📍', 'Buying centres', can('MANAGE_BUYING_CENTRES') or can('GENERATE_REPORTS')),
-      ('management.scales', '⚖️', 'Scales', can('MANAGE_SCALES')),
-      ('notices.board', '📢', 'Notice board', true),
-      ('complaints.index', '🗣️', 'Complaints', can('HANDLE_COMPLAINT')),
-      ('inputs.index', '🌱', 'Fertilizer', can('PROCESS_FERTILIZER')),
-      ('admin.staff', '🧑‍💼', 'Staff and access', can('VIEW_STAFF')),
-      ('management.audit', '🔍', 'Audit trail', can('VIEW_AUDIT_LOG')),
-    ] %}
     <nav class="sidebar-links">
-      {% for endpoint, icon, label, allowed in nav if allowed %}
-        <a href="{{ url_for(endpoint) }}" class="nav-link {% if request.endpoint and request.endpoint.startswith(endpoint) %}active{% endif %}"><span class="icon">{{ icon }}</span> {{ label }}</a>
+      {% for endpoint, label in nav_items %}
+        <a href="{{ url_for(endpoint) }}" class="nav-link {% if request.endpoint and request.endpoint.startswith(endpoint) %}active{% endif %}">{{ label }}</a>
       {% endfor %}
     </nav>
 
     <div class="sidebar-footer">
       Signed in as <strong>{{ current_user.full_name }}</strong><br>
-      <a href="{{ url_for('auth.logout') }}" style="color:#f5e9c8; text-decoration:underline;">Log out</a>
+      <a href="{{ url_for('auth.logout') }}">Log out</a>
     </div>
   </aside>
 

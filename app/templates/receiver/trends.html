@@ -4,7 +4,7 @@
 
 <div class="topbar">
   <div class="greeting">
-    <h1>📈 Buying Centre Trends</h1>
+    <h1>Buying Centre Trends</h1>
     <p>How much each buying centre is contributing, and whether that's rising, falling, or steady.</p>
   </div>
 </div>
@@ -17,7 +17,7 @@
 </div>
 
 <div class="card" style="margin-bottom:20px;">
-  <div class="card-header"><h3>📊 Purchases over time</h3></div>
+  <div class="card-header"><h3>Purchases over time</h3></div>
   <div class="chart-toolbar">
     <label style="font-size:0.82rem; color:var(--muted);">Show:</label>
     <select id="chart-centre">
@@ -37,7 +37,7 @@
 </div>
 
 <div class="card" style="margin-bottom:20px;">
-  <div class="card-header"><h3>⚖️ Compare periods</h3></div>
+  <div class="card-header"><h3>Compare periods</h3></div>
   <div class="chart-toolbar">
     <select id="compare-mode">
       <option value="days">Compare two days</option>
@@ -59,7 +59,7 @@
 
 <div class="card">
   <div class="card-header">
-    <h3>🏆 Buying centres today, ranked</h3>
+    <h3>Buying centres today, ranked</h3>
     <span class="hint">Trend = last 7 days average vs the 7 days before that</span>
   </div>
   <table>
@@ -144,8 +144,8 @@ async function loadChart() {
       datasets: [{
         label: 'Kilos bought',
         data: data.values,
-        borderColor: '#1b7a43',
-        backgroundColor: 'rgba(27,122,67,0.12)',
+        borderColor: '#111827',
+        backgroundColor: 'rgba(17,24,39,0.06)',
         fill: true,
         tension: 0.25,
         pointRadius: 2,
@@ -205,7 +205,7 @@ async function runCompare() {
   }
   const delta = data.b.total - data.a.total;
   const pct = data.a.total > 0 ? (delta / data.a.total * 100) : (delta > 0 ? 100 : 0);
-  const deltaColor = delta > 0 ? '#1c7a3c' : (delta < 0 ? '#b83127' : '#a6720b');
+  const deltaColor = delta > 0 ? '#166534' : (delta < 0 ? '#991b1b' : '#92400e');
   const arrow = delta > 0 ? '▲' : (delta < 0 ? '▼' : '■');
   resultEl.innerHTML = `
     <div class="compare-box"><div class="label">${data.a.label}</div><div class="value">${data.a.total.toFixed(1)} kg</div></div>

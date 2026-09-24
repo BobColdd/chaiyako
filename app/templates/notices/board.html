@@ -3,7 +3,7 @@
 {% block content %}
 
 <div class="topbar">
-  <div class="greeting"><h1>📢 Notice board</h1><p>Notices for your department, for all staff, and for the public.</p></div>
+  <div class="greeting"><h1>Notice board</h1><p>Notices for your department, for all staff, and for the public.</p></div>
   {% if can_publish %}
   <div class="row">
     <a class="btn btn-sm {{ 'btn-outline' if show_all else 'btn-primary' }}" href="{{ url_for('notices.board') }}">Mine</a>

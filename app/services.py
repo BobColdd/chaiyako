@@ -12,6 +12,7 @@ from datetime import timedelta
 
 from flask import current_app
 from sqlalchemy import and_, or_
+from sqlalchemy.orm import selectinload
 
 from app import db, rules
 from app.audit import log_action
@@ -326,10 +327,16 @@ def lookup_farm_by_farmer_number(farmer_number, centre):
 
 
 def farmers_for_buying(centre):
-    """Farmer number + name pairs for this centre, for the manual-lookup dropdown."""
-    farmers = (Farmer.query.filter_by(buying_centre_id=centre.id, status="ACTIVE")
+    """Farmer number + name for this centre: the list the buying screen filters as the clerk types.
+
+    'verified' says whether the farmer has a farm that tea can be bought against yet.
+    """
+    farmers = (Farmer.query.options(selectinload(Farmer.farms))
+               .filter_by(buying_centre_id=centre.id, status="ACTIVE")
                .order_by(Farmer.farmer_number).all())
-    return [{"farmer_number": f.farmer_number, "name": f.full_name} for f in farmers]
+    return [{"farmer_number": f.farmer_number, "name": f.full_name,
+             "verified": any(farm.verification_status == "VERIFIED" and farm.farm_number for farm in f.farms)}
+            for f in farmers]
 
 
 def confirm_weighing(actor, centre, farm_number, event_id):

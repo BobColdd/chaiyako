@@ -20,7 +20,7 @@
     <div class="factory">{{ factory_name }}</div>
     <h1>{{ title }}</h1>
     <p>{{ message }}</p>
-    {% if current_user.is_authenticated %}<a href="{{ url_for('work.home') }}">Back to My work</a>
+    {% if current_user.is_authenticated %}<a href="{{ home_url }}">Go back</a>
     {% else %}<a href="{{ url_for('auth.login') }}">Go to login</a>{% endif %}
   </main>
 </body>

@@ -118,9 +118,33 @@ class TeaFlow(unittest.TestCase):
 
     def test_pages_render_for_a_manager(self):
         self.login("mgr")
-        for path in ("/work/", "/management/", "/management/insights", "/management/centres",
+        for path in ("/management/", "/management/insights", "/management/centres",
                      "/management/scales", "/management/transactions", "/farmers/", "/notices/"):
             self.assertEqual(self.http.get(path).status_code, 200, path)
+
+    def test_managers_can_read_complaints_but_not_resolve_them(self):
+        self.login("mgr")
+        self.assertEqual(self.http.get("/complaints/").status_code, 200)
+        self.assertEqual(self.http.post("/complaints/1/resolve").status_code, 403)
+        self.http.get("/logout")
+        self.login("clerk")
+        self.assertEqual(self.http.get("/complaints/").status_code, 403)
+
+    def test_farmers_page_lists_the_farmers(self):
+        self.login("field")
+        page = self.http.get("/farmers/")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Amos Kip", page.data)
+
+    def test_buying_farmer_list_shows_this_centres_farmers_and_who_is_ready(self):
+        self.login("clerk")
+        self.http.post("/buying/centre", data={"buying_centre_id": self.centre.id})
+        data = self.http.get("/buying/farmers").get_json()
+        self.assertTrue(data["ok"])
+        self.assertEqual([f["name"] for f in data["farmers"]], ["Amos Kip"])
+        self.assertTrue(data["farmers"][0]["verified"])
+        self.http.post("/buying/centre", data={"buying_centre_id": self.other.id})
+        self.assertEqual(self.http.get("/buying/farmers").get_json()["farmers"], [])
 
     def test_public_notice_feed_needs_no_login(self):
         self.assertEqual(self.http.get("/api/public/notices").status_code, 200)

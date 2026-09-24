@@ -7,6 +7,7 @@ from sqlalchemy import and_, or_
 
 from app import db, rules
 from app.models import BuyingCentre, Farm, Farmer, TeaTransaction
+from app.navigation import home_endpoint
 from app.permissions import has_permission, permission_required
 from app.services import (
     ServiceError, add_farm, change_farmer_centre, register_farmer, update_farmer_details,
@@ -139,5 +140,5 @@ def card(farm_id):
     if not farm.is_verified or not farm.farm_number:
         flash("This farm has no farm number yet — it has to be verified first.", "error")
         return redirect(url_for("farmers.detail", farmer_id=farm.farmer_id)
-                        if has_permission(current_user, "VIEW_FARMER") else url_for("work.home"))
+                        if has_permission(current_user, "VIEW_FARMER") else url_for(home_endpoint(current_user)))
     return render_template("farmers/card.html", farm=farm)
