@@ -61,32 +61,40 @@ def home():
         flash(f"Quality recorded for {len(chosen)} buying centre(s).", "success")
         return redirect(url_for("receiver.home"))
 
-   stats = today_by_centre()
+  @receiver_bp.route("/")
+  @login_required
+  @permission_required("VIEW_TRANSACTION")
+  def home():
+      today = today_utc()
 
-quality_today = {
-    q.buying_centre_id: q
-    for q in QualityRecord.query.filter_by(date=today).all()
-}
+      stats = today_by_centre()
 
-rows = []
+      quality_today = {
+          q.buying_centre_id: q
+              for q in QualityRecord.query.filter_by(date=today).all()
+    }
 
-for centre in centres:
-    s = stats.get(centre.id, {})
-    seen = [
-        sc.last_seen_at
-        for sc in centre.scales
-        if sc.status == "ACTIVE" and sc.last_seen_at
-    ]
+    rows = []
 
-    rows.append({
-        "centre": centre,
-        "kilos": s.get("kilos", 0.0),
-        "count": s.get("count", 0),
-        "last": s.get("last"),
-        "scale_seen": max(seen) if seen else None,
-        "has_scale": any(sc.status == "ACTIVE" for sc in centre.scales),
-        "quality_today": quality_today.get(centre.id),
-    })
+    for centre in centres:
+        s = stats.get(centre.id, {})
+        seen = [
+            sc.last_seen_at
+            for sc in centre.scales
+            if sc.status == "ACTIVE" and sc.last_seen_at
+        ]
+
+        rows.append({
+            "centre": centre,
+            "kilos": s.get("kilos", 0.0),
+            "count": s.get("count", 0),
+            "last": s.get("last"),
+            "scale_seen": max(seen) if seen else None,
+            "has_scale": any(
+                sc.status == "ACTIVE" for sc in centre.scales
+            ),
+            "quality_today": quality_today.get(centre.id),
+        })
 
 recent = (
     QualityRecord.query
