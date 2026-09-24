@@ -11,6 +11,7 @@ from flask_login import current_user
 from app import db
 from app.analytics import (
     active_centres,
+    centre_leaderboard,
     centre_trends,
     compare_periods,
     daily_series,
