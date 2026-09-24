@@ -61,13 +61,49 @@ def home():
         flash(f"Quality recorded for {len(chosen)} buying centre(s).", "success")
         return redirect(url_for("receiver.home"))
 
-    quality_today = {q.buying_centre_id: q for q in QualityRecord.query.filter_by(date=today).all()}
-rows = [{"centre": r["centre"], "today_kilos": r["kilos"], "quality_today": quality_today.get(r["centre"].id)}
-        for r in centre_leaderboard(today)]
-recent = QualityRecord.query.order_by(QualityRecord.recorded_at.desc()).limit(20).all()
-return render_template("receiver/dashboard.html", centres=centres, rows=rows,
-                       today_total=sum(r["today_kilos"] for r in rows), recent_quality=recent, today=today)
+   stats = today_by_centre()
 
+quality_today = {
+    q.buying_centre_id: q
+    for q in QualityRecord.query.filter_by(date=today).all()
+}
+
+rows = []
+
+for centre in centres:
+    s = stats.get(centre.id, {})
+    seen = [
+        sc.last_seen_at
+        for sc in centre.scales
+        if sc.status == "ACTIVE" and sc.last_seen_at
+    ]
+
+    rows.append({
+        "centre": centre,
+        "kilos": s.get("kilos", 0.0),
+        "count": s.get("count", 0),
+        "last": s.get("last"),
+        "scale_seen": max(seen) if seen else None,
+        "has_scale": any(sc.status == "ACTIVE" for sc in centre.scales),
+        "quality_today": quality_today.get(centre.id),
+    })
+
+recent = (
+    QualityRecord.query
+    .order_by(QualityRecord.recorded_at.desc())
+    .limit(20)
+    .all()
+)
+
+return render_template(
+    "receiver/dashboard.html",
+    centres=centres,
+    rows=rows,
+    today_total=sum(r["kilos"] for r in rows),
+    today_count=sum(r["count"] for r in rows),
+    recent_quality=recent,
+    today=today,
+)
 
 @receiver_bp.route("/trends")
 @permission_required("VIEW_CENTRE_TRENDS")
