@@ -85,10 +85,24 @@
 </div>
 
 {% if can('VIEW_TRANSACTION') %}
+<div class="card mb">
+  <form method="GET" class="chart-toolbar" style="margin:0;">
+    <div><label>From</label><input type="date" name="from" value="{{ range_start.isoformat() }}"></div>
+    <div><label>To</label><input type="date" name="to" value="{{ range_end.isoformat() }}"></div>
+    <div style="align-self:flex-end;"><button class="btn btn-primary btn-sm" type="submit">Show</button></div>
+  </form>
+</div>
+
 <div class="card">
   <div class="card-header">
     <h3>Tea delivered</h3>
-    <span class="hint">This month {{ month_kg|kg }} · All time {{ farmer.total_kilos|kg }}</span>
+    <span class="hint">This range {{ range_kg|kg }} · This month {{ month_kg|kg }} · All time {{ farmer.total_kilos|kg }}</span>
+  </div>
+  <div class="row" style="margin-bottom:12px;">
+    <a class="btn btn-outline btn-sm" target="_blank"
+       href="{{ url_for('farmers.transactions_print', farmer_id=farmer.id, **request.args) }}">Print</a>
+    <a class="btn btn-outline btn-sm"
+       href="{{ url_for('farmers.transactions_pdf', farmer_id=farmer.id, **request.args) }}">Download PDF</a>
   </div>
   {% if transactions %}
   <div class="table-scroll">

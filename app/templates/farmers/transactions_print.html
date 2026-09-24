@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tea delivered — {{ farmer.full_name }}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 13px; color: #111827; margin: 0; padding: 24px; }
+  h1 { font-size: 18px; margin: 0 0 2px; }
+  h2 { font-size: 14px; margin: 0 0 12px; color: #374151; font-weight: 500; }
+  .meta { color: #6b7280; margin-bottom: 18px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e5e7eb; }
+  th { background: #f9fafb; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: #6b7280; }
+  td.num, th.num { text-align: right; }
+  .void { color: #b91c1c; font-size: 11px; }
+  .total { margin-top: 14px; text-align: right; font-weight: 600; }
+  .actions { margin-top: 20px; }
+  .actions button { font: inherit; padding: 8px 16px; cursor: pointer; }
+  @media print { .actions { display: none; } body { padding: 0; } }
+</style>
+</head>
+<body>
+  <h1>{{ factory_name }}</h1>
+  <h2>Tea delivery transactions</h2>
+  <div class="meta">
+    {{ farmer.full_name }} &middot; {{ farmer.farmer_number }} &middot; {{ farmer.buying_centre.name }}<br>
+    {{ start.strftime('%d %b %Y') }} &ndash; {{ end.strftime('%d %b %Y') }}
+  </div>
+
+  {% if transactions %}
+  <table>
+    <thead><tr><th>When</th><th>Transaction</th><th>Centre</th><th class="num">Kilos</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for t in transactions %}
+      <tr>
+        <td>{{ t.transaction_time|eat }}</td>
+        <td>{{ t.transaction_number }}</td>
+        <td>{{ t.buying_centre.name }}</td>
+        <td class="num">{{ "%.1f"|format(t.weight_kg) }}</td>
+        <td>{% if t.status == 'VOIDED' %}<span class="void">Voided{% if t.void_reason %} — {{ t.void_reason }}{% endif %}</span>{% else %}Valid{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="total">Valid kilos in this period: {{ "%.1f"|format(total_kg) }} kg</p>
+  {% else %}
+  <p>No tea delivered in this period.</p>
+  {% endif %}
+
+  <div class="actions">
+    <button onclick="window.print()">Print</button>
+  </div>
+</body>
+</html>

@@ -195,17 +195,17 @@ def _parse_day(text, fallback):
         return fallback
 
 
-@management_bp.route("/transactions")
-@permission_required("VIEW_TRANSACTION")
-def transactions():
+def _transactions_query(args):
+    """The filtered transaction query plus the resolved filter values, shared by the
+    screen and the print view so a printout always matches what was searched for."""
     today = today_utc()
-    start = _parse_day(request.args.get("from"), today)
-    end = _parse_day(request.args.get("to"), today)
+    start = _parse_day(args.get("from"), today)
+    end = _parse_day(args.get("to"), today)
     if end < start:
         start, end = end, start
-    centre_id = request.args.get("centre_id", type=int)
-    status = request.args.get("status", "")
-    q = request.args.get("q", "").strip()
+    centre_id = args.get("centre_id", type=int)
+    status = args.get("status", "")
+    q = args.get("q", "").strip()
 
     query = (TeaTransaction.query
              .join(Farmer, Farmer.id == TeaTransaction.farmer_id)
@@ -224,13 +224,35 @@ def transactions():
             Farm.farm_number.ilike(like), Farmer.first_name.ilike(like), Farmer.last_name.ilike(like),
             Farmer.phone.ilike(like),
         ))
+    return query, start, end, centre_id, status, q
 
+
+@management_bp.route("/transactions")
+@permission_required("VIEW_TRANSACTION")
+def transactions():
+    query, start, end, centre_id, status, q = _transactions_query(request.args)
     valid_total = float(query.filter(TeaTransaction.status == "VALID")
                         .with_entities(db.func.coalesce(db.func.sum(TeaTransaction.weight_kg), 0.0)).scalar() or 0)
     rows = query.order_by(TeaTransaction.transaction_time.desc()).limit(200).all()
     centres_list = BuyingCentre.query.order_by(BuyingCentre.name).all()
     return render_template("management/transactions.html", rows=rows, valid_total=valid_total, centres=centres_list,
                            start=start, end=end, centre_id=centre_id, status=status, q=q, capped=len(rows) == 200)
+
+
+@management_bp.route("/transactions/print")
+@permission_required("VIEW_TRANSACTION")
+def transactions_print():
+    query, start, end, centre_id, status, q = _transactions_query(request.args)
+    valid_total = float(query.filter(TeaTransaction.status == "VALID")
+                        .with_entities(db.func.coalesce(db.func.sum(TeaTransaction.weight_kg), 0.0)).scalar() or 0)
+    rows = query.order_by(TeaTransaction.transaction_time.desc()).limit(200).all()
+    centre_name = None
+    if centre_id:
+        centre = db.session.get(BuyingCentre, centre_id)
+        centre_name = centre.name if centre else None
+    return render_template("management/transactions_print.html", rows=rows, valid_total=valid_total,
+                           start=start, end=end, centre_name=centre_name, status=status, q=q,
+                           capped=len(rows) == 200)
 
 
 @management_bp.route("/transactions/<int:transaction_id>/void", methods=["POST"])
