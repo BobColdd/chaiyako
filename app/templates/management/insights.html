@@ -7,6 +7,9 @@
     <h1>Insights & Trends</h1>
     <p>How buying is actually going — per centre, per farmer, and over time.</p>
   </div>
+  <div>
+    <button class="btn btn-primary btn-sm" onclick="openReportCard()">Generate report</button>
+  </div>
 </div>
 
 <div class="stats-grid">
@@ -46,14 +49,27 @@
       <option value="30" selected>Last 30 days</option>
       <option value="90">Last 90 days</option>
       <option value="180">Last 180 days</option>
+      <option value="custom">Custom range…</option>
     </select>
+    <span id="chart-range-wrap" class="hidden" style="display:inline-flex; gap:8px; align-items:center;">
+      <label style="font-size:0.82rem; color:var(--muted); margin:0;">From:</label>
+      <input type="date" id="chart-from">
+      <label style="font-size:0.82rem; color:var(--muted); margin:0;">To:</label>
+      <input type="date" id="chart-to">
+      <button class="btn btn-sm btn-outline" type="button" onclick="loadChart()">Apply</button>
+    </span>
   </div>
   <div class="chart-wrap"><canvas id="purchasesChart"></canvas></div>
 </div>
 
 <div class="grid-2" style="margin-bottom:20px;">
   <div class="card">
-    <div class="card-header"><h3>Buying centres — today vs yesterday</h3></div>
+    <div class="card-header"><h3>Buying centres</h3></div>
+    <form method="GET" class="chart-toolbar" style="margin:0 0 14px;">
+      <div><label style="margin:0;">From:</label><input type="date" name="from" value="{{ range_start.isoformat() }}"></div>
+      <div><label style="margin:0;">To:</label><input type="date" name="to" value="{{ range_end.isoformat() }}"></div>
+      <button class="btn btn-sm btn-outline" type="submit">Apply</button>
+    </form>
     <div class="chart-wrap" style="height:320px;"><canvas id="centreBarChart"></canvas></div>
   </div>
   <div class="card">
@@ -70,7 +86,7 @@
   <div class="card-header"><h3>Compare periods</h3></div>
   <div class="chart-toolbar">
     <select id="compare-mode">
-      <option value="days">Compare two days</option>
+      <option value="days" selected>Compare two dates</option>
       <option value="months">Compare two months</option>
     </select>
     <select id="compare-centre">
@@ -79,9 +95,19 @@
       <option value="{{ c.id }}">{{ c.name }}</option>
       {% endfor %}
     </select>
-    <input type="date" id="compare-a">
-    <input type="month" id="compare-b-month" style="display:none;">
-    <input type="date" id="compare-b">
+    <span class="compare-field compare-field-days">
+      <input type="date" id="compare-a">
+    </span>
+    <span class="compare-field compare-field-months hidden">
+      <input type="month" id="compare-a-month">
+    </span>
+    <span style="color:var(--muted);">vs</span>
+    <span class="compare-field compare-field-days">
+      <input type="date" id="compare-b">
+    </span>
+    <span class="compare-field compare-field-months hidden">
+      <input type="month" id="compare-b-month">
+    </span>
     <button class="btn btn-sm btn-primary" onclick="runCompare()">Compare</button>
   </div>
   <div id="compare-result" class="compare-result"></div>
@@ -89,18 +115,17 @@
 
 <div class="card" style="margin-bottom:20px;">
   <div class="card-header">
-    <h3>Buying centres — today vs yesterday, and the trend</h3>
-    <span class="hint">Trend = last 7 days average vs the 7 days before that</span>
+    <h3>Buying centres, ranked</h3>
+    <span class="hint">Total = the From/To range above &nbsp;&middot;&nbsp; Trend = last 7 days average vs the 7 days before that</span>
   </div>
   <table>
-    <thead><tr><th>#</th><th>Centre</th><th>Today</th><th>Yesterday</th><th>Trend</th></tr></thead>
+    <thead><tr><th>#</th><th>Centre</th><th>Total</th><th>Trend</th></tr></thead>
     <tbody>
       {% for row in trend_rows %}
       <tr>
         <td>{{ loop.index }}</td>
         <td>{{ row.centre.name }}</td>
-        <td>{{ "%.1f"|format(row.today_kilos) }} kg</td>
-        <td>{{ "%.1f"|format(row.yesterday_kilos) }} kg</td>
+        <td>{{ "%.1f"|format(row.period_kilos) }} kg</td>
         <td>
           {% if row.direction == 'improving' %}
             <span class="trend-arrow improving">▲ Improving</span> <span class="hint">({{ "%.0f"|format(row.pct_change) }}%)</span>
@@ -138,6 +163,46 @@
   {% endif %}
 </div>
 
+<div id="report-overlay" class="report-overlay hidden">
+  <div class="report-card">
+    <div class="card-header">
+      <h3>Generate report</h3>
+      <button class="btn btn-sm btn-outline" type="button" onclick="closeReportCard()">Close</button>
+    </div>
+    <p class="hint" style="margin-bottom:14px;">
+      Includes your name and department, since Insights &amp; Trends is open to more than one role.
+    </p>
+    <div class="stack">
+      <div class="row">
+        <div><label>From:</label><input type="date" id="report-from" value="{{ range_start.isoformat() }}"></div>
+        <div><label>To:</label><input type="date" id="report-to" value="{{ range_end.isoformat() }}"></div>
+      </div>
+      <div>
+        <label>Buying centre</label>
+        <select id="report-centre">
+          <option value="">All centres</option>
+          {% for c in centres %}
+          <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Clerk</label>
+        <select id="report-clerk">
+          <option value="">All clerks</option>
+          {% for e in clerks %}
+          <option value="{{ e.id }}">{{ e.full_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="row" style="justify-content:flex-end; margin-top:6px;">
+        <button class="btn btn-outline btn-sm" type="button" onclick="openReport('print')">Print</button>
+        <button class="btn btn-primary btn-sm" type="button" onclick="openReport('pdf')">Generate PDF</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -147,6 +212,8 @@
 <script>
 const seriesUrl = "{{ url_for('management.insights_series') }}";
 const compareUrl = "{{ url_for('management.insights_compare') }}";
+const reportUrl = "{{ url_for('management.insights_report') }}";
+const reportPdfUrl = "{{ url_for('management.insights_report_pdf') }}";
 const centreChartData = {{ chart_data|tojson }};
 const qualityCounts = {{ quality_counts|tojson }};
 
@@ -178,8 +245,17 @@ let chart;
 async function loadChart() {
   if (typeof Chart === 'undefined') return;
   const centreId = document.getElementById('chart-centre').value;
-  const days = document.getElementById('chart-days').value;
-  const params = new URLSearchParams({ days });
+  const period = document.getElementById('chart-days').value;
+  const params = new URLSearchParams();
+  if (period === 'custom') {
+    const from = document.getElementById('chart-from').value;
+    const to = document.getElementById('chart-to').value;
+    if (!from || !to) return;   // wait until both ends of the range are picked
+    params.set('from', from);
+    params.set('to', to);
+  } else {
+    params.set('days', period);
+  }
   if (centreId) params.set('centre_id', centreId);
 
   let data;
@@ -204,12 +280,22 @@ async function loadChart() {
         fill: true,
         tension: 0.25,
         pointRadius: 2,
+        pointHoverRadius: 5,
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            // The one figure people actually want on hover: the real kilos for that day.
+            label: (ctx) => `${ctx.parsed.y.toFixed(1)} kg`,
+          }
+        }
+      },
       scales: { y: { beginAtZero: true, title: { display: true, text: 'kg' } } }
     }
   });
@@ -217,23 +303,29 @@ async function loadChart() {
 
 function initCharts() {
 document.getElementById('chart-centre').addEventListener('change', loadChart);
-document.getElementById('chart-days').addEventListener('change', loadChart);
+document.getElementById('chart-days').addEventListener('change', () => {
+  const isCustom = document.getElementById('chart-days').value === 'custom';
+  document.getElementById('chart-range-wrap').classList.toggle('hidden', !isCustom);
+  if (!isCustom) loadChart();
+});
 
-// Buying centres — today vs yesterday, grouped bars
+// Buying centres over the chosen From/To range
 if (document.getElementById('centreBarChart')) {
   new Chart(document.getElementById('centreBarChart').getContext('2d'), {
     type: 'bar',
     data: {
       labels: centreChartData.map(r => r.name),
       datasets: [
-        { label: 'Today', data: centreChartData.map(r => r.today), backgroundColor: '#111827' },
-        { label: 'Yesterday', data: centreChartData.map(r => r.yesterday), backgroundColor: '#d1d5db' },
+        { label: 'Kilos in period', data: centreChartData.map(r => r.kilos), backgroundColor: '#111827' },
       ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { position: 'top' } },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y.toFixed(1)} kg` } },
+      },
       scales: {
         x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 45, font: { size: 10 } } },
         y: { beginAtZero: true, title: { display: true, text: 'kg' } },
@@ -264,25 +356,26 @@ if (document.getElementById('qualityChart')) {
 loadChart();
 }
 
-document.getElementById('compare-mode').addEventListener('change', (e) => {
-  const isMonths = e.target.value === 'months';
-  document.getElementById('compare-a').style.display = isMonths ? 'none' : 'inline-block';
-  document.getElementById('compare-b').style.display = isMonths ? 'none' : 'inline-block';
-  document.getElementById('compare-a-month')?.remove();
-  if (isMonths && !document.getElementById('compare-a-month')) {
-    const a = document.createElement('input');
-    a.type = 'month'; a.id = 'compare-a-month';
-    document.getElementById('compare-a').after(a);
-  }
-  document.getElementById('compare-b-month').style.display = isMonths ? 'inline-block' : 'none';
-});
+// ---- Compare periods -------------------------------------------------
+// Both the "specific date" pair and the "month" pair live in the DOM all the
+// time now (nothing is created on the fly), and syncCompareMode() runs once
+// on load as well as on every change — so if a browser restores the dropdown
+// to "months" on reload without firing a change event, the visible fields and
+// the fields actually being read never fall out of sync with each other.
+function syncCompareMode() {
+  const isMonths = document.getElementById('compare-mode').value === 'months';
+  document.querySelectorAll('.compare-field-days').forEach(el => el.classList.toggle('hidden', isMonths));
+  document.querySelectorAll('.compare-field-months').forEach(el => el.classList.toggle('hidden', !isMonths));
+}
+document.getElementById('compare-mode').addEventListener('change', syncCompareMode);
+syncCompareMode();
 
 async function runCompare() {
   const mode = document.getElementById('compare-mode').value;
   const centreId = document.getElementById('compare-centre').value;
   let a, b;
   if (mode === 'months') {
-    a = document.getElementById('compare-a-month')?.value;
+    a = document.getElementById('compare-a-month').value;
     b = document.getElementById('compare-b-month').value;
   } else {
     a = document.getElementById('compare-a').value;
@@ -301,15 +394,41 @@ async function runCompare() {
     resultEl.innerHTML = `<p class="hint">${data.error}</p>`;
     return;
   }
-  const delta = data.b.total - data.a.total;
-  const pct = data.a.total > 0 ? (delta / data.a.total * 100) : (delta > 0 ? 100 : 0);
+  const delta = data.delta;
   const deltaColor = delta > 0 ? '#166534' : (delta < 0 ? '#991b1b' : '#92400e');
   const arrow = delta > 0 ? '▲' : (delta < 0 ? '▼' : '■');
+  // pct is null when the starting/left-hand period had zero kilos — there's no
+  // baseline to measure a percentage against, so say that plainly instead of
+  // showing a made-up "100%".
+  const pctText = data.pct === null ? 'no purchases in the starting period to compare against'
+                                     : `${Math.abs(data.pct).toFixed(0)}%`;
   resultEl.innerHTML = `
     <div class="compare-box"><div class="label">${data.a.label}</div><div class="value">${data.a.total.toFixed(1)} kg</div></div>
     <div class="compare-box"><div class="label">${data.b.label}</div><div class="value">${data.b.total.toFixed(1)} kg</div></div>
-    <div class="compare-delta" style="color:${deltaColor};">${arrow} ${Math.abs(delta).toFixed(1)} kg (${Math.abs(pct).toFixed(0)}%)</div>
+    <div class="compare-delta" style="color:${deltaColor};">${arrow} ${Math.abs(delta).toFixed(1)} kg (${pctText})</div>
   `;
+}
+
+// ---- Report card -------------------------------------------------------
+function openReportCard() { document.getElementById('report-overlay').classList.remove('hidden'); }
+function closeReportCard() { document.getElementById('report-overlay').classList.add('hidden'); }
+
+function reportParams() {
+  const params = new URLSearchParams({
+    from: document.getElementById('report-from').value,
+    to: document.getElementById('report-to').value,
+  });
+  const centreId = document.getElementById('report-centre').value;
+  const clerkId = document.getElementById('report-clerk').value;
+  if (centreId) params.set('centre_id', centreId);
+  if (clerkId) params.set('clerk_id', clerkId);
+  return params;
+}
+
+function openReport(kind) {
+  const params = reportParams();
+  const base = kind === 'pdf' ? reportPdfUrl : reportUrl;
+  window.open(`${base}?${params.toString()}`, '_blank');
 }
 
 loadChartJs(CHART_JS_SOURCES, 0);

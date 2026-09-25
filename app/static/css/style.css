@@ -266,6 +266,19 @@ details.disclosure[open] summary { margin-bottom: 8px; }
 .trend-arrow.improving { color: #166534; }
 .trend-arrow.dropping { color: #991b1b; }
 .trend-arrow.stagnant { color: #92400e; }
+.compare-field { display: inline-flex; }
+.compare-field input { width: auto; }
+
+/* ---------- Report builder card ---------- */
+.report-overlay {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(17, 24, 39, 0.35);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.report-card {
+  background: #fff; border: 1px solid var(--line); border-radius: var(--card-radius);
+  padding: 22px; width: 100%; max-width: 440px; max-height: 90vh; overflow-y: auto;
+}
 
 /* ---------- Mobile ---------- */
 .mobile-bar { display: none; }

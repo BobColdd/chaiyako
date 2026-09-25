@@ -2,20 +2,21 @@
 transactions (with voiding), and the audit trail."""
 from datetime import datetime, time, timedelta
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, Response, abort, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user
 from sqlalchemy import or_
 
 from app import db, rules
 from app.analytics import (
-    active_centres, centre_analysis, centre_trends, compare_periods, daily_series, kilos_by_centre,
-    today_by_centre, top_farmers, total_kilos,
+    active_centres, centre_analysis, centre_trends, compare_periods, daily_series, daily_series_between,
+    kilos_by_centre, report_clerks, report_data, today_by_centre, top_farmers, total_kilos,
 )
 from app.models import (
-    AuditLog, BuyingCentre, Complaint, Farm, FarmVerification, Farmer, QualityRecord, Receipt,
+    AuditLog, BuyingCentre, Complaint, Employee, Farm, FarmVerification, Farmer, QualityRecord, Receipt,
     TeaTransaction, User, WeighingScale,
 )
 from app.permissions import has_permission, permission_required
+from app.reports import build_insights_report_pdf
 from app.services import (
     ServiceError, create_centre, create_scale, rotate_scale_key, toggle_scale, update_centre, void_transaction,
 )
@@ -54,23 +55,34 @@ def dashboard():
 
 # --------------------------------------------------------------------- insights
 
+def _insights_range(args):
+    """The From/To range for the buying-centres section (defaults to today only,
+    same as the old fixed 'today' column, so an untouched page looks the same)."""
+    today = today_utc()
+    start = _parse_day(args.get("from"), today)
+    end = _parse_day(args.get("to"), today)
+    if end < start:
+        start, end = end, start
+    return start, end
+
+
 @management_bp.route("/insights")
 @permission_required("GENERATE_REPORTS")
 def insights():
     today = today_utc()
-    yesterday = today - timedelta(days=1)
     centres = active_centres()
-    today_by, yesterday_by, trend_by = kilos_by_centre(today, today), kilos_by_centre(yesterday, yesterday), centre_trends()
+    range_start, range_end = _insights_range(request.args)
+
+    period_by, trend_by = kilos_by_centre(range_start, range_end), centre_trends()
 
     rows = []
     for c in centres:
         direction, pct = trend_by.get(c.id, ("stagnant", 0.0))
-        rows.append({"centre": c, "today_kilos": today_by.get(c.id, 0.0), "yesterday_kilos": yesterday_by.get(c.id, 0.0),
+        rows.append({"centre": c, "period_kilos": period_by.get(c.id, 0.0),
                      "direction": direction, "pct_change": pct})
-    rows.sort(key=lambda r: r["today_kilos"], reverse=True)
+    rows.sort(key=lambda r: r["period_kilos"], reverse=True)
 
-    chart_data = [{"name": r["centre"].name, "today": round(r["today_kilos"], 1), "yesterday": round(r["yesterday_kilos"], 1)}
-                  for r in rows]
+    chart_data = [{"name": r["centre"].name, "kilos": round(r["period_kilos"], 1)} for r in rows]
     quality_counts = {"good": 0, "average": 0, "poor": 0}
     for q in QualityRecord.query.filter(QualityRecord.date >= today - timedelta(days=30)).all():
         if q.grade in quality_counts:
@@ -78,8 +90,9 @@ def insights():
 
     return render_template(
         "management/insights.html", centres=centres, trend_rows=rows, chart_data=chart_data,
-        quality_counts=quality_counts, top_farmers=top_farmers(15),
-        today_total=total_kilos(today, today), yesterday_total=total_kilos(yesterday, yesterday),
+        quality_counts=quality_counts, top_farmers=top_farmers(15), clerks=report_clerks(),
+        range_start=range_start, range_end=range_end,
+        today_total=total_kilos(today, today), yesterday_total=total_kilos(today - timedelta(days=1), today - timedelta(days=1)),
         week_total=total_kilos(today - timedelta(days=6), today), month_total=total_kilos(today.replace(day=1), today),
     )
 
@@ -87,8 +100,15 @@ def insights():
 @management_bp.route("/insights/series")
 @permission_required("GENERATE_REPORTS")
 def insights_series():
-    days = max(7, min(request.args.get("days", 30, type=int), 180))
-    labels, values = daily_series(days=days, centre_id=request.args.get("centre_id", type=int) or None)
+    centre_id = request.args.get("centre_id", type=int) or None
+    from_str, to_str = request.args.get("from"), request.args.get("to")
+    if from_str and to_str:
+        today = today_utc()
+        start, end = _parse_day(from_str, today), _parse_day(to_str, today)
+        labels, values = daily_series_between(start, end, centre_id=centre_id)
+    else:
+        days = max(7, min(request.args.get("days", 30, type=int), 365))
+        labels, values = daily_series(days=days, centre_id=centre_id)
     return {"labels": labels, "values": values}
 
 
@@ -100,6 +120,41 @@ def insights_compare():
                                request.args.get("b", ""), request.args.get("centre_id", type=int) or None)
     except (ValueError, IndexError, TypeError):
         return {"error": "Enter two valid dates to compare."}, 400
+
+
+def _report_filters(args):
+    today = today_utc()
+    start = _parse_day(args.get("from"), today - timedelta(days=6))
+    end = _parse_day(args.get("to"), today)
+    if end < start:
+        start, end = end, start
+    centre_id = args.get("centre_id", type=int) or None
+    clerk_id = args.get("clerk_id", type=int) or None
+    centre = db.session.get(BuyingCentre, centre_id) if centre_id else None
+    clerk = db.session.get(Employee, clerk_id) if clerk_id else None
+    return start, end, centre_id, clerk_id, centre, clerk
+
+
+@management_bp.route("/insights/report")
+@permission_required("GENERATE_REPORTS")
+def insights_report():
+    start, end, centre_id, clerk_id, centre, clerk = _report_filters(request.args)
+    report = report_data(start, end, centre_id=centre_id, clerk_id=clerk_id)
+    return render_template("management/insights_report.html", report=report, start=start, end=end,
+                           centre=centre, clerk=clerk, generated_at=utcnow())
+
+
+@management_bp.route("/insights/report/pdf")
+@permission_required("GENERATE_REPORTS")
+def insights_report_pdf():
+    start, end, centre_id, clerk_id, centre, clerk = _report_filters(request.args)
+    report = report_data(start, end, centre_id=centre_id, clerk_id=clerk_id)
+    pdf_bytes = build_insights_report_pdf(
+        current_app.config["FACTORY_NAME"], current_user, start, end,
+        centre.name if centre else None, clerk.full_name if clerk else None, report)
+    filename = f"insights-report-{start.isoformat()}-to-{end.isoformat()}.pdf"
+    return Response(pdf_bytes, mimetype="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 # ---------------------------------------------------------------- buying centres

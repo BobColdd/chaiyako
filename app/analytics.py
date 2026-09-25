@@ -10,7 +10,7 @@ and only the management pages call it (the receiver never sees whose tea it was)
 from datetime import datetime, time, timedelta
 
 from app import db
-from app.models import BuyingCentre, Farmer, TeaTransaction
+from app.models import BuyingCentre, Employee, Farmer, TeaTransaction
 from app.timeutil import today_utc
 
 
@@ -53,16 +53,18 @@ def kilos_by_centre(start, end):
     return {row[0]: float(row[1] or 0) for row in rows}
 
 
-def daily_series(days=30, centre_id=None):
-    """(labels, values): kilos per day for the last `days` days including today.
-    Every day gets a value, even 0, so charts have no gaps."""
-    today = today_utc()
-    start = today - timedelta(days=days - 1)
+def daily_series_between(start, end, centre_id=None):
+    """(labels, values): kilos per day between two dates (inclusive), oldest first.
+    Every day gets a value, even 0, so charts have no gaps. Backs both the preset
+    "last N days" view and a user-chosen From/To range — same query either way."""
+    if end < start:
+        start, end = end, start
+    days = (end - start).days + 1
     rows = (
         _valid_between(
             db.session.query(db.func.date(TeaTransaction.transaction_time).label("d"),
                              db.func.sum(TeaTransaction.weight_kg)),
-            start, today, centre_id)
+            start, end, centre_id)
         .group_by("d")
         .all()
     )
@@ -78,6 +80,13 @@ def daily_series(days=30, centre_id=None):
         labels.append(d.strftime("%d %b"))
         values.append(round(totals.get(d.isoformat(), 0) or 0, 1))
     return labels, values
+
+
+def daily_series(days=30, centre_id=None):
+    """(labels, values): kilos per day for the last `days` days including today."""
+    today = today_utc()
+    start = today - timedelta(days=days - 1)
+    return daily_series_between(start, today, centre_id=centre_id)
 
 
 def centre_leaderboard(day):
@@ -132,9 +141,22 @@ def compare_periods(mode, a_value, b_value, centre_id=None):
 
     a_start, a_end, a_label = parse_period(a_value)
     b_start, b_end, b_label = parse_period(b_value)
+    a_total = round(total_kilos(a_start, a_end, centre_id), 1)
+    b_total = round(total_kilos(b_start, b_end, centre_id), 1)
+    delta = round(b_total - a_total, 1)
+
+    # The percentage is worked out ONCE, here, so the page never has to re-derive it
+    # (that re-derivation is what used to show a flat, misleading "100%" any time the
+    # left-hand/starting period had zero kilos — division by zero standing in for a
+    # real percentage). With no baseline to measure against, there is no percentage:
+    # pct is null and the page says so in words instead of a fake number.
+    pct = round((delta / a_total) * 100, 1) if a_total > 0 else None
+
     return {
-        "a": {"label": a_label, "total": round(total_kilos(a_start, a_end, centre_id), 1)},
-        "b": {"label": b_label, "total": round(total_kilos(b_start, b_end, centre_id), 1)},
+        "a": {"label": a_label, "total": a_total},
+        "b": {"label": b_label, "total": b_total},
+        "delta": delta,
+        "pct": pct,
     }
 
 
@@ -167,6 +189,46 @@ def today_by_centre():
         .all()
     )
     return {row[0]: {"kilos": float(row[1] or 0), "count": row[2], "last": row[3]} for row in rows}
+
+
+def report_clerks():
+    """Employees who have at least one valid tea purchase recorded against them —
+    for the Insights & Trends report builder's clerk filter."""
+    return (
+        db.session.query(Employee)
+        .join(TeaTransaction, TeaTransaction.clerk_employee_id == Employee.id)
+        .filter(TeaTransaction.status == "VALID")
+        .distinct()
+        .order_by(Employee.first_name, Employee.last_name)
+        .all()
+    )
+
+
+def report_data(start, end, centre_id=None, clerk_id=None):
+    """Everything the Insights & Trends report needs for one From/To window,
+    optionally narrowed to one buying centre and/or one clerk: the matching
+    transactions, the running total, and a breakdown per centre and per clerk."""
+    query = _valid_between(TeaTransaction.query, start, end, centre_id)
+    if clerk_id:
+        query = query.filter(TeaTransaction.clerk_employee_id == clerk_id)
+    rows = query.order_by(TeaTransaction.transaction_time.asc()).all()
+
+    by_centre, by_clerk = {}, {}
+    for t in rows:
+        c = by_centre.setdefault(t.buying_centre_id, {"centre": t.buying_centre, "kg": 0.0, "count": 0})
+        c["kg"] += t.weight_kg
+        c["count"] += 1
+        k = by_clerk.setdefault(t.clerk_employee_id, {"clerk": t.clerk, "kg": 0.0, "count": 0})
+        k["kg"] += t.weight_kg
+        k["count"] += 1
+
+    return {
+        "transactions": rows,
+        "total_kg": float(sum(t.weight_kg for t in rows)),
+        "count": len(rows),
+        "centre_rows": sorted(by_centre.values(), key=lambda r: r["kg"], reverse=True),
+        "clerk_rows": sorted(by_clerk.values(), key=lambda r: r["kg"], reverse=True),
+    }
 
 
 def centre_analysis():
