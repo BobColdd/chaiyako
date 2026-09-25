@@ -15,9 +15,13 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 
     # Render (and most hosts) hand out postgres:// URLs; SQLAlchemy needs postgresql://
+    # Also force the psycopg2 driver explicitly, since an unspecified postgresql://
+    # URL can resolve to the psycopg (v3) dialect, which isn't installed here.
     db_url = os.environ.get("DATABASE_URL")
     if db_url and db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
+    if db_url and db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     SQLALCHEMY_DATABASE_URI = db_url or "sqlite:///" + os.path.join(basedir, "teafarm.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
