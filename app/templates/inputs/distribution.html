@@ -1,0 +1,213 @@
+{% extends "layout/base.html" %}
+{% block title %}Fertilizer distribution — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>Distribution</h1><p>Enter the farm number, then record the fertilizer the farmer collects.</p></div>
+</div>
+
+<div class="buy-grid mb">
+  <div class="card">
+    <div class="step-label">1 · Enter the farm number</div>
+    <div class="combo">
+      <input type="text" id="farm-search" class="scan-input" autofocus autocomplete="off"
+             role="combobox" aria-expanded="false" aria-controls="farm-list" aria-autocomplete="list"
+             placeholder="Type the farm number" aria-label="Farm number">
+      <div id="farm-list" class="combo-list hidden" role="listbox"></div>
+    </div>
+    <div id="farmer-panel" class="farmer-panel muted">The farmer's name appears here.</div>
+  </div>
+
+  <div class="card">
+    <div class="step-label">2 · Record the fertilizer</div>
+    <form method="POST" id="give-form" class="stack">
+      <input type="hidden" name="farm_number" id="farm-number-field">
+      <div class="form-grid">
+        <div>
+          <label for="fertilizer-type">Fertilizer type</label>
+          <input type="text" name="fertilizer_type" id="fertilizer-type" list="type-options" maxlength="80"
+                 placeholder="e.g. NPK 25:5:5" required>
+          <datalist id="type-options">{% for t in types %}<option value="{{ t }}">{% endfor %}</datalist>
+        </div>
+        <div>
+          <label for="quantity-kg">Quantity (kg)</label>
+          <input type="number" name="quantity_kg" id="quantity-kg" step="0.1" min="0.1" required>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label for="centre-select">Handed out at</label>
+          <select name="buying_centre_id" id="centre-select" required>
+            {% for c in centres %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="notes">Notes (optional)</label>
+          <input type="text" name="notes" id="notes" maxlength="300">
+        </div>
+      </div>
+      <button type="submit" id="give-btn" class="btn btn-primary btn-confirm" disabled>Record distribution</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3>Fertilizer this farmer has taken</h3>
+    <span class="hint" id="history-total"></span>
+  </div>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Date</th><th>Fertilizer</th><th class="num">Kg</th><th>Centre</th><th>Recorded by</th><th>Notes</th></tr></thead>
+    <tbody id="history-body"></tbody>
+  </table>
+  </div>
+  <p id="history-empty" class="empty-state">Select a farm to see what the farmer has taken.</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const farmsUrl = "{{ url_for('inputs.farms_list') }}";
+  const historyUrl = "{{ url_for('inputs.history', farmer_id=0) }}".replace(/0$/, '');
+  const preselect = "{{ preselect }}";
+
+  const $ = (id) => document.getElementById(id);
+  const search = $('farm-search'), list = $('farm-list'), panel = $('farmer-panel');
+  const numberField = $('farm-number-field'), giveBtn = $('give-btn'), centreSelect = $('centre-select');
+  const historyBody = $('history-body'), historyEmpty = $('history-empty'), historyTotal = $('history-total');
+
+  let farms = [];      // [{farm_number, farmer_id, farmer_number, name, centre_id, centre, bushes, kg, times}]
+  let shown = [];      // the farms currently listed
+  let active = -1;     // the row highlighted with the arrow keys
+  let selected = null; // the farm picked from the list
+  const MAX_ROWS = 50;
+
+  fetch(farmsUrl).then((r) => r.json()).then((data) => {
+    if (data.ok) farms = data.farms;
+    if (preselect) { const hit = farms.find((f) => f.farm_number === preselect); if (hit) choose(hit); }
+  }).catch(() => {});
+
+  // Typing CY04 lists every farm starting CY04. The farm number ranks first; the farmer number or name also match.
+  function matches(term) {
+    const t = term.trim().toLowerCase();
+    if (!t) return farms.slice();
+    const scored = [];
+    farms.forEach((f) => {
+      const farm = f.farm_number.toLowerCase(), num = f.farmer_number.toLowerCase(), name = f.name.toLowerCase();
+      let rank = -1;
+      if (farm === t) rank = 0;
+      else if (farm.startsWith(t)) rank = 1;
+      else if (farm.includes(t)) rank = 2;
+      else if (num.includes(t)) rank = 3;
+      else if (name.includes(t)) rank = 4;
+      if (rank >= 0) scored.push([rank, f]);
+    });
+    scored.sort((a, b) => a[0] - b[0]);       // stable, so each group stays in farm-number order
+    return scored.map((x) => x[1]);
+  }
+
+  function closeList() { list.classList.add('hidden'); search.setAttribute('aria-expanded', 'false'); active = -1; }
+
+  function renderList() {
+    shown = matches(search.value);
+    list.textContent = '';
+    if (!shown.length) { closeList(); return; }
+    shown.slice(0, MAX_ROWS).forEach((f) => {
+      const row = document.createElement('div');
+      row.className = 'combo-item'; row.setAttribute('role', 'option');
+      const number = document.createElement('span'); number.className = 'mono'; number.textContent = f.farm_number;
+      const name = document.createElement('span'); name.className = 'combo-name'; name.textContent = f.name;
+      row.append(number, name);
+      row.addEventListener('click', () => choose(f));
+      list.appendChild(row);
+    });
+    if (shown.length > MAX_ROWS) {
+      const more = document.createElement('div');
+      more.className = 'combo-more'; more.textContent = (shown.length - MAX_ROWS) + ' more. Keep typing to narrow the list.';
+      list.appendChild(more);
+    }
+    active = -1;
+    list.classList.remove('hidden');
+    search.setAttribute('aria-expanded', 'true');
+  }
+
+  function moveActive(step) {
+    const rows = list.querySelectorAll('.combo-item');
+    if (!rows.length) return;
+    if (active >= 0) rows[active].classList.remove('active');
+    active = (active + step + rows.length) % rows.length;
+    rows[active].classList.add('active');
+    rows[active].scrollIntoView({ block: 'nearest' });
+  }
+
+  function clearSelection() {
+    selected = null; numberField.value = '';
+    panel.className = 'farmer-panel muted'; panel.textContent = 'The farmer\'s name appears here.';
+    giveBtn.disabled = true;
+    historyBody.textContent = ''; historyTotal.textContent = '';
+    historyEmpty.textContent = 'Select a farm to see what the farmer has taken.';
+    historyEmpty.classList.remove('hidden');
+  }
+
+  function choose(f) {
+    closeList();
+    selected = f;
+    search.value = f.farm_number;
+    numberField.value = f.farm_number;
+    panel.className = 'farmer-panel';
+    panel.textContent = '';
+    const who = document.createElement('div'); who.className = 'who'; who.textContent = f.name;
+    const meta = document.createElement('div'); meta.className = 'muted';
+    meta.textContent = f.farmer_number + ' · farm ' + f.farm_number + ' · ' + f.bushes + ' bushes · ' + f.centre;
+    const took = document.createElement('div'); took.className = 'muted';
+    took.textContent = f.times ? 'Has taken ' + f.kg.toFixed(1) + ' kg so far (' + f.times + ' time' + (f.times === 1 ? '' : 's') + ')'
+                               : 'Has not taken any fertilizer yet';
+    panel.append(who, meta, took);
+    centreSelect.value = String(f.centre_id);
+    giveBtn.disabled = false;
+    loadHistory(f);
+    $('fertilizer-type').focus();
+  }
+
+  async function loadHistory(f) {
+    historyBody.textContent = ''; historyTotal.textContent = '';
+    historyEmpty.textContent = 'Loading…'; historyEmpty.classList.remove('hidden');
+    try {
+      const res = await fetch(historyUrl + f.farmer_id);
+      const data = await res.json();
+      if (!selected || selected.farmer_id !== f.farmer_id) return;   // the person picked someone else meanwhile
+      if (!data.ok || !data.records.length) { historyEmpty.textContent = 'Nothing taken yet (0 kg).'; return; }
+      historyEmpty.classList.add('hidden');
+      historyTotal.textContent = 'Total ' + data.total_kg.toFixed(1) + ' kg';
+      data.records.forEach((r) => {
+        const tr = document.createElement('tr');
+        [r.date, r.type, r.kg === null ? '—' : r.kg.toFixed(1), r.centre, r.by, r.notes].forEach((text, i) => {
+          const td = document.createElement('td'); td.textContent = text; if (i === 2) td.className = 'num'; tr.appendChild(td);
+        });
+        historyBody.appendChild(tr);
+      });
+    } catch (e) { historyEmpty.textContent = 'Could not load the history. Check the connection.'; }
+  }
+
+  search.addEventListener('click', renderList);            // a tap shows the whole list
+  search.addEventListener('input', () => { if (selected) clearSelection(); renderList(); });   // each key narrows it
+  search.addEventListener('keydown', (e) => {
+    const open = !list.classList.contains('hidden');
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (open) moveActive(1); else renderList(); }
+    else if (e.key === 'ArrowUp' && open) { e.preventDefault(); moveActive(-1); }
+    else if (e.key === 'Escape') { closeList(); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      const list_ = matches(search.value);
+      if (open && active >= 0) choose(shown[active]);
+      else if (list_.length && (list_.length === 1 || list_[0].farm_number.toLowerCase() === search.value.trim().toLowerCase())) choose(list_[0]);
+      else renderList();
+    }
+  });
+  document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.combo')) closeList(); });
+  list.addEventListener('mousedown', (e) => e.preventDefault());    // keep the typing cursor in the box
+})();
+</script>
+{% endblock %}

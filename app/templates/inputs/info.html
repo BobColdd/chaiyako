@@ -1,0 +1,123 @@
+{% extends "layout/base.html" %}
+{% block title %}Fertilizer info — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>Info</h1><p>Farmers, the fertilizer they have taken, and every distribution record.</p></div>
+</div>
+
+<div class="card mb">
+  <form method="GET" class="chart-toolbar" style="margin:0;">
+    <div><label>From</label><input type="date" name="from" value="{{ start }}"></div>
+    <div><label>To</label><input type="date" name="to" value="{{ end }}"></div>
+    <div><label>Buying centre</label>
+      <select name="centre">
+        <option value="">All centres</option>
+        {% for c in centres %}<option value="{{ c.id }}" {{ 'selected' if centre_id == c.id }}>{{ c.name }}</option>{% endfor %}
+      </select></div>
+    <div><label>Farmer list</label>
+      <select name="show">
+        <option value="all" {{ 'selected' if show == 'all' }}>All farmers</option>
+        <option value="taken" {{ 'selected' if show == 'taken' }}>Have taken</option>
+        <option value="none" {{ 'selected' if show == 'none' }}>Not yet taken</option>
+      </select></div>
+    <div style="flex:1; min-width:200px;"><label>Search</label>
+      <input type="text" name="q" value="{{ q }}" placeholder="Name, farmer number, farm number, phone or fertilizer"></div>
+    <div style="align-self:flex-end;" class="row">
+      <button class="btn btn-primary btn-sm" type="submit">Show</button>
+      {% if start or end or q or centre_id or show != 'all' %}<a class="btn btn-outline btn-sm" href="{{ url_for('inputs.info') }}">Clear</a>{% endif %}
+    </div>
+  </form>
+  <p class="hint" style="margin-top:8px;">The centre is where the fertilizer was handed out. The farmer figures below count only what was given within the dates and centre chosen.</p>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card stat-1">
+    <div class="label">Active farmers</div>
+    <div class="value">{{ stats.farmers }}</div>
+  </div>
+  <div class="stat-card stat-2">
+    <div class="label">Have taken fertilizer</div>
+    <div class="value">{{ stats.served }}</div>
+  </div>
+  <div class="stat-card stat-3">
+    <div class="label">Not yet taken</div>
+    <div class="value">{{ stats.not_served }}</div>
+  </div>
+  <div class="stat-card stat-4">
+    <div class="label">Given out in this view</div>
+    <div class="value">{{ "%.1f"|format(stats.kg) }} kg</div>
+  </div>
+</div>
+
+<div class="card mb">
+  <div class="card-header">
+    <h3>Distribution records</h3>
+    <div class="row">
+      <span class="hint">{% if record_count > record_limit %}Showing the latest {{ record_limit }} of {{ record_count }}. Print and PDF include up to 2000.{% else %}{{ record_count }} record(s){% endif %}</span>
+      <a class="btn btn-outline btn-sm" target="_blank" href="{{ url_for('inputs.print_view', **request.args) }}">Print</a>
+      <a class="btn btn-outline btn-sm" href="{{ url_for('inputs.records_pdf', **request.args) }}">Download PDF</a>
+    </div>
+  </div>
+  {% if records %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr>
+      <th>Date</th><th>Farmer no.</th><th>Farmer</th><th>Farm no.</th><th>Fertilizer</th>
+      <th class="num">Kg</th><th>Centre</th><th>Recorded by</th><th>Notes</th>
+    </tr></thead>
+    <tbody>
+      {% for d in records %}
+      <tr>
+        <td>{{ d.date.strftime('%d %b %Y') }}</td>
+        <td class="mono">{{ d.farmer.farmer_number if d.farmer else '—' }}</td>
+        <td>{% if d.farmer %}{{ d.farmer.full_name }}{% else %}<span class="tag tag-staff">Centre-wide</span>{% endif %}</td>
+        <td class="mono">{{ farm_numbers.get(d.farmer_id, '') if d.farmer else '' }}</td>
+        <td>{{ d.fertilizer_type }}</td>
+        <td class="num">{% if d.quantity_kg is not none %}{{ "%.1f"|format(d.quantity_kg) }}{% else %}—{% endif %}</td>
+        <td>{{ d.buying_centre.name }}</td>
+        <td>{{ d.recorded_by.full_name if d.recorded_by else '' }}</td>
+        <td>{{ d.notes or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty-state">No distribution records match this view.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3>Farmers</h3>
+    <span class="hint">{% if matched > farmer_limit %}Showing the first {{ farmer_limit }} of {{ matched }}. Search to narrow the list.{% else %}{{ matched }} farmer(s){% endif %}</span>
+  </div>
+  {% if rows %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr>
+      <th>Farmer no.</th><th>Name</th><th>Farm no.</th><th>Registered centre</th>
+      <th class="num">Bushes</th><th class="num">Times taken</th><th class="num">Total kg</th><th>Last taken</th>
+    </tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="mono">{{ r.farmer.farmer_number }}</td>
+        <td>{{ r.farmer.full_name }}</td>
+        <td class="mono">{% if r.farm_numbers %}{{ r.farm_numbers }}{% else %}<span class="tag tag-dept">Awaiting verification</span>{% endif %}</td>
+        <td>{{ r.farmer.buying_centre.name }}</td>
+        <td class="num">{{ r.bushes }}</td>
+        <td class="num">{{ r.times }}</td>
+        <td class="num">{{ "%.1f"|format(r.kg) }}</td>
+        <td>{% if r.last %}{{ r.last.strftime('%d %b %Y') }}{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty-state">No farmers match this view.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fertilizer distribution — {{ factory_name }}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 12px; color: #111827; margin: 0; padding: 24px; }
+  h1 { font-size: 18px; margin: 0 0 2px; }
+  h2 { font-size: 14px; margin: 0 0 12px; color: #374151; font-weight: 500; }
+  .meta { color: #6b7280; margin-bottom: 18px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 5px 7px; border-bottom: 1px solid #e5e7eb; }
+  th { background: #f9fafb; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; color: #6b7280; }
+  td.num, th.num { text-align: right; }
+  .total { margin-top: 14px; text-align: right; font-weight: 600; }
+  .actions { margin-top: 20px; }
+  .actions button { font: inherit; padding: 8px 16px; cursor: pointer; }
+  @media print { .actions { display: none; } body { padding: 0; } }
+</style>
+</head>
+<body>
+  <h1>{{ factory_name }}</h1>
+  <h2>Fertilizer distribution</h2>
+  <div class="meta">
+    {{ description }}
+    {% if capped %} &middot; showing the latest {{ limit }}{% endif %}
+    &middot; Printed by {{ current_user.full_name }}, {{ current_user.department.name }}
+  </div>
+
+  {% if records %}
+  <table>
+    <thead><tr>
+      <th>Date</th><th>Farmer no.</th><th>Farmer</th><th>Farm no.</th><th>Fertilizer</th>
+      <th class="num">Kg</th><th>Centre</th><th>Recorded by</th>
+    </tr></thead>
+    <tbody>
+      {% for d in records %}
+      <tr>
+        <td>{{ d.date.strftime('%d %b %Y') }}</td>
+        <td>{{ d.farmer.farmer_number if d.farmer else '—' }}</td>
+        <td>{{ d.farmer.full_name if d.farmer else 'Centre-wide' }}</td>
+        <td>{{ farm_numbers.get(d.farmer_id, '') if d.farmer else '' }}</td>
+        <td>{{ d.fertilizer_type }}</td>
+        <td class="num">{% if d.quantity_kg is not none %}{{ "%.1f"|format(d.quantity_kg) }}{% else %}—{% endif %}</td>
+        <td>{{ d.buying_centre.name }}</td>
+        <td>{{ d.recorded_by.full_name if d.recorded_by else '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="total">{{ records|length }} record(s) &middot; Total given out: {{ "%.1f"|format(total_kg) }} kg</p>
+  {% else %}
+  <p>No distribution records match.</p>
+  {% endif %}
+
+  <div class="actions">
+    <button onclick="window.print()">Print</button>
+  </div>
+</body>
+</html>
