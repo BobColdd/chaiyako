@@ -90,6 +90,34 @@ p { margin: 0; }
 .bell:hover { background: var(--soft); }
 .bell.active { background: var(--ink); border-color: var(--ink); color: #fff; }
 .bell svg { width: 20px; height: 20px; }
+.bell { position: relative; }
+/* Green dot: something on the board is new to this person. */
+.bell-dot {
+  position: absolute; top: 5px; right: 5px; width: 10px; height: 10px; border-radius: 50%;
+  background: #16a34a; border: 2px solid #fff;
+}
+.bell.active .bell-dot { border-color: var(--ink); }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.tag.tag-new { background: #dcfce7; color: #166534; }
+.nav-count {
+  margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: #16a34a; color: #fff;
+  font-size: 0.7rem; font-weight: 600; vertical-align: 1px;
+}
+
+/* The Escalate card: a native <dialog>, so Esc closes it and focus stays inside while it is open. */
+.escalate-dialog {
+  width: min(480px, calc(100vw - 32px)); padding: 22px; border: 1px solid var(--line);
+  border-radius: var(--card-radius); background: #fff; color: var(--ink);
+}
+.escalate-dialog::backdrop { background: rgba(17, 24, 39, 0.35); }
+.dialog-close {
+  border: 0; background: transparent; font-size: 1.5rem; line-height: 1; color: var(--muted);
+  cursor: pointer; padding: 0 4px;
+}
+.dialog-close:hover { color: var(--ink); }
 
 .sidebar-footer { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--line); font-size: 0.8rem; color: var(--muted); }
 .sidebar-footer a { color: var(--ink); text-decoration: underline; }

@@ -17,7 +17,7 @@ from sqlalchemy.orm import selectinload
 from app import db, rules
 from app.audit import log_action
 from app.models import (
-    BuyingCentre, Department, Employee, Farm, FarmVerification, Farmer, Notice, Receipt,
+    BuyingCentre, Department, Employee, Farm, FarmVerification, Escalation, Farmer, Notice, NoticeRead, Receipt,
     Role, TeaTransaction, User, WeighingEvent, WeighingScale,
 )
 from app.permissions import has_permission
@@ -442,6 +442,35 @@ def visible_notices(user, limit=None):
     return query.limit(limit).all() if limit else query.all()
 
 
+def _unread_notices_query(user):
+    """Live notices this person may read, that they did not post themselves and have not opened yet."""
+    read_ids = db.session.query(NoticeRead.notice_id).filter(NoticeRead.employee_id == user.employee_id)
+    return _live_notices().filter(
+        or_(
+            Notice.audience.in_(("PUBLIC", "STAFF")),
+            and_(Notice.audience == "DEPARTMENT", Notice.department_id == user.employee.department_id),
+        ),
+        Notice.posted_by_id != user.employee_id,
+        Notice.id.notin_(read_ids),
+    )
+
+
+def unread_notice_ids(user):
+    """Ids of the notices that are new to this person (drives the green dot and the 'New' tags)."""
+    return {row.id for row in _unread_notices_query(user).with_entities(Notice.id).all()}
+
+
+def unread_notice_count(user):
+    return _unread_notices_query(user).count()
+
+
+def mark_notices_read(user):
+    """Called when someone opens the notice board: everything they can see is now seen.
+    The caller commits. Not audited - reading is not a business event."""
+    for notice_id in unread_notice_ids(user):
+        db.session.add(NoticeRead(employee_id=user.employee_id, notice_id=notice_id))
+
+
 def all_live_notices():
     """Every live notice in the factory (for people who publish notices and need the whole picture)."""
     return _live_notices().order_by(Notice.created_at.desc()).all()
@@ -647,3 +676,117 @@ def toggle_scale(actor, scale):
     scale.status = "INACTIVE" if scale.status == "ACTIVE" else "ACTIVE"
     log_action("SCALE_STATUS_CHANGED", "weighing_scale", scale.id, new={"status": scale.status})
     return scale.status
+
+
+# ============================================================================
+# Escalations: a case handed up to another department's officer
+# ============================================================================
+
+def escalation_desks():
+    """[(department, officer title)] a case can be escalated to, in a fixed order."""
+    from app.catalogue import ESCALATION_DESKS
+    wanted = dict(ESCALATION_DESKS)
+    rows = Department.query.filter(Department.name.in_(list(wanted)), Department.status == "ACTIVE").all()
+    by_name = {d.name: d for d in rows}
+    return [(by_name[name], officer) for name, officer in ESCALATION_DESKS if name in by_name]
+
+
+def raise_escalation(actor, *, department_id, description, farmer_id=None):
+    if not has_permission(actor, "RAISE_ESCALATION"):
+        raise ServiceError("Your role can't escalate cases.")
+    description = (description or "").strip()[:2000]
+    if not description:
+        raise ServiceError("Describe what is being escalated.")
+    desk = next(((d, officer) for d, officer in escalation_desks() if d.id == department_id), None)
+    if desk is None:
+        raise ServiceError("Choose who to escalate to.")
+    department, officer = desk
+    if department.id == actor.employee.department_id:
+        raise ServiceError("Escalate to another department, not your own.")
+    farmer = None
+    if farmer_id:
+        farmer = db.session.get(Farmer, farmer_id)
+        if farmer is None:
+            raise ServiceError("That farmer no longer exists.")
+
+    escalation = Escalation(raised_by_id=actor.employee_id, to_department_id=department.id,
+                            farmer_id=farmer.id if farmer else None, description=description)
+    db.session.add(escalation)
+    db.session.flush()
+    log_action("ESCALATION_RAISED", "escalation", escalation.id,
+               new={"to": department.name, "officer": officer, "farmer_id": escalation.farmer_id})
+    return escalation
+
+
+def _desk_member_problem(actor, escalation):
+    if not has_permission(actor, "HANDLE_ESCALATION") or actor.employee.department_id != escalation.to_department_id:
+        return "This case was escalated to another desk."
+    return None
+
+
+def take_escalation(actor, escalation):
+    problem = _desk_member_problem(actor, escalation)
+    if problem:
+        raise ServiceError(problem)
+    if escalation.status != "open":
+        who = escalation.taken_by.full_name if escalation.taken_by else "someone"
+        raise ServiceError(f"That case is already {escalation.status} ({who}).")
+    escalation.status = "taken"
+    escalation.taken_by_id = actor.employee_id
+    escalation.taken_at = utcnow()
+    log_action("ESCALATION_TAKEN", "escalation", escalation.id, old={"status": "open"}, new={"status": "taken"})
+
+
+def resolve_escalation(actor, escalation, note):
+    problem = _desk_member_problem(actor, escalation)
+    if problem:
+        raise ServiceError(problem)
+    if escalation.status == "resolved":
+        raise ServiceError("That case is already resolved.")
+    note = (note or "").strip()[:2000]
+    if not note:
+        raise ServiceError("Leave a short note on what was done, so the person who raised it can see the outcome.")
+    old = escalation.status
+    escalation.status = "resolved"
+    escalation.resolution_note = note
+    escalation.resolved_by_id = actor.employee_id
+    escalation.resolved_at = utcnow()
+    escalation.outcome_seen = False
+    log_action("ESCALATION_RESOLVED", "escalation", escalation.id, old={"status": old},
+               new={"status": "resolved", "note": note})
+
+
+def escalations_for_desk(user, status=None):
+    """Cases addressed to this person's department (only for people who may handle them)."""
+    if not has_permission(user, "HANDLE_ESCALATION"):
+        return []
+    query = Escalation.query.filter(Escalation.to_department_id == user.employee.department_id)
+    if status == "active":
+        query = query.filter(Escalation.status.in_(("open", "taken")))
+    elif status in ("open", "taken", "resolved"):
+        query = query.filter(Escalation.status == status)
+    return query.order_by(Escalation.created_at.desc()).limit(200).all()
+
+
+def escalations_raised_by(user, limit=200):
+    return (Escalation.query.filter(Escalation.raised_by_id == user.employee_id)
+            .order_by(Escalation.created_at.desc()).limit(limit).all())
+
+
+def escalations_waiting_count(user):
+    """What puts a green dot on the bell besides notices:
+    cases waiting at your desk that nobody has picked up, and outcomes on cases you raised that you haven't read."""
+    waiting = 0
+    if has_permission(user, "HANDLE_ESCALATION"):
+        waiting += Escalation.query.filter(Escalation.to_department_id == user.employee.department_id,
+                                           Escalation.status == "open").count()
+    waiting += Escalation.query.filter(Escalation.raised_by_id == user.employee_id,
+                                       Escalation.status == "resolved",
+                                       Escalation.outcome_seen.is_(False)).count()
+    return waiting
+
+
+def mark_outcomes_seen(user):
+    """The person who raised a case has now opened their list. The caller commits."""
+    Escalation.query.filter(Escalation.raised_by_id == user.employee_id, Escalation.status == "resolved",
+                            Escalation.outcome_seen.is_(False)).update({"outcome_seen": True})

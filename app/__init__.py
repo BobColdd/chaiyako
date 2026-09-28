@@ -48,12 +48,13 @@ def create_app(config_overrides=None):
     from app.management import management_bp
     from app.admin import admin_bp
     from app.notices import notices_bp
+    from app.escalations import escalations_bp
     from app.complaints import complaints_bp
     from app.inputs import inputs_bp
     from app.api import api_bp
 
     for blueprint in (auth_bp, farmers_bp, field_bp, buying_bp, receiver_bp,
-                      management_bp, admin_bp, notices_bp, complaints_bp, inputs_bp, api_bp):
+                      management_bp, admin_bp, notices_bp, escalations_bp, complaints_bp, inputs_bp, api_bp):
         app.register_blueprint(blueprint)
 
     # ---- templates ----------------------------------------------------
@@ -66,6 +67,10 @@ def create_app(config_overrides=None):
             from app.navigation import home_url, nav_items
             values["nav_items"] = nav_items(current_user)
             values["home_url"] = home_url(current_user)
+            from app.services import escalation_desks, escalations_waiting_count, unread_notice_count
+            values["unread_notices"] = unread_notice_count(current_user)
+            values["escalations_waiting"] = escalations_waiting_count(current_user)
+            values["escalation_desks"] = escalation_desks        # called by the Escalate card only when it is shown
         return values
 
     @app.template_filter("eat")

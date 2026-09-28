@@ -7,7 +7,10 @@
     <h1>{{ farmer.full_name }}</h1>
     <p>{{ farmer.farmer_number }} · {{ farmer.buying_centre.name }} · {{ farmer.total_bushes }} tea bushes</p>
   </div>
-  <a href="{{ url_for('farmers.index') }}" class="btn btn-outline btn-sm">← Farmers</a>
+  <div class="row">
+    {% include "escalations/_escalate_card.html" %}
+    <a href="{{ url_for('farmers.index') }}" class="btn btn-outline btn-sm">← Farmers</a>
+  </div>
 </div>
 
 <div class="grid-2 mb">

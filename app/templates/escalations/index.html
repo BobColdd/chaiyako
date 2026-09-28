@@ -1,0 +1,94 @@
+{% extends "layout/base.html" %}
+{% block title %}Escalations — {{ factory_name }}{% endblock %}
+{% block content %}
+
+<div class="topbar">
+  <div class="greeting"><h1>Escalations</h1><p>Cases handed up to another desk, and the ones handed to yours.</p></div>
+  {% if can_raise %}<div class="row">{% include "escalations/_escalate_card.html" %}</div>{% endif %}
+</div>
+
+{% macro status_badge(e) %}
+  {% if e.status == 'open' %}<span class="badge badge-repair">Waiting</span>
+  {% elif e.status == 'taken' %}<span class="tag tag-staff">Being handled</span>
+  {% else %}<span class="badge badge-good">Resolved</span>{% endif %}
+{% endmacro %}
+
+{% if can_handle %}
+<div class="card mb">
+  <div class="card-header">
+    <h3>Escalated to your desk</h3>
+    <div class="row">
+      {% for f in filters %}
+        <a class="btn btn-sm {{ 'btn-primary' if f == status_filter else 'btn-outline' }}"
+           href="{{ url_for('escalations.index', status=f) }}">{{ {'active': 'To do', 'open': 'Waiting', 'taken': 'Being handled', 'resolved': 'Resolved', 'all': 'All'}[f] }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  {% if desk %}
+    {% for e in desk %}
+    <div class="note-card">
+      <div class="row" style="justify-content:space-between;">
+        <strong>From {{ e.raised_by.full_name }} <span class="muted" style="font-weight:400;">· {{ e.raised_by.department.name }}</span></strong>
+        <span>{{ status_badge(e) }}</span>
+      </div>
+      <p style="font-size:0.88rem; margin-top:6px; white-space:pre-wrap;">{{ e.description }}</p>
+      <div class="note-date">
+        {{ e.created_at|eat }}
+        {% if e.farmer %} · About <a href="{{ url_for('farmers.detail', farmer_id=e.farmer.id) }}" style="text-decoration:underline;">{{ e.farmer.full_name }}</a> ({{ e.farmer.farmer_number }}){% endif %}
+        {% if e.taken_by and e.status != 'open' %} · Taken by {{ e.taken_by.full_name }}{% endif %}
+      </div>
+      {% if e.status == 'resolved' %}
+        <p style="font-size:0.85rem; margin-top:8px; white-space:pre-wrap;"><strong>Outcome:</strong> {{ e.resolution_note }}
+          <span class="muted">— {{ e.resolved_by.full_name }}, {{ e.resolved_at|eat }}</span></p>
+      {% else %}
+        <div class="row" style="margin-top:10px; align-items:flex-start;">
+          {% if e.status == 'open' %}
+          <form method="POST" action="{{ url_for('escalations.take', escalation_id=e.id) }}" style="margin:0;">
+            <button class="btn btn-sm btn-primary" type="submit">I'll handle this</button>
+          </form>
+          {% endif %}
+          <details class="disclosure">
+            <summary>Resolve with a note</summary>
+            <form method="POST" action="{{ url_for('escalations.resolve', escalation_id=e.id) }}" class="stack" style="margin-top:8px;">
+              <textarea name="resolution_note" rows="3" maxlength="2000" required placeholder="What was done, for the person who raised it."></textarea>
+              <button class="btn btn-sm btn-outline" type="submit" style="align-self:flex-start;">Mark resolved</button>
+            </form>
+          </details>
+        </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state">Nothing here.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if can_raise or mine %}
+<div class="card">
+  <div class="card-header"><h3>Raised by you</h3></div>
+  {% if mine %}
+    {% for e in mine %}
+    <div class="note-card">
+      <div class="row" style="justify-content:space-between;">
+        <strong>To {{ e.to_department.name }}{% if e.id in new_outcomes %} <span class="tag tag-new">New outcome</span>{% endif %}</strong>
+        <span>{{ status_badge(e) }}</span>
+      </div>
+      <p style="font-size:0.88rem; margin-top:6px; white-space:pre-wrap;">{{ e.description }}</p>
+      <div class="note-date">
+        {{ e.created_at|eat }}
+        {% if e.farmer %} · About <a href="{{ url_for('farmers.detail', farmer_id=e.farmer.id) }}" style="text-decoration:underline;">{{ e.farmer.full_name }}</a>{% endif %}
+        {% if e.taken_by and e.status == 'taken' %} · {{ e.taken_by.full_name }} is handling it{% endif %}
+      </div>
+      {% if e.status == 'resolved' %}
+        <p style="font-size:0.85rem; margin-top:8px; white-space:pre-wrap;"><strong>Outcome:</strong> {{ e.resolution_note }}
+          <span class="muted">— {{ e.resolved_by.full_name }}, {{ e.resolved_at|eat }}</span></p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state">You haven't escalated anything yet. Use the Escalate button here or on a farmer's page.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

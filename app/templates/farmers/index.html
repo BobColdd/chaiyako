@@ -4,6 +4,7 @@
 
 <div class="topbar">
   <div class="greeting"><h1>Farmers</h1><p>Every registered farmer, with their buying centre and verification status.</p></div>
+  {% if can('RAISE_ESCALATION') %}<div class="row">{% include "escalations/_escalate_card.html" %}</div>{% endif %}
 </div>
 
 {% if can('CREATE_FARMER') %}

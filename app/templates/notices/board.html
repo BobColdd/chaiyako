@@ -12,6 +12,13 @@
   {% endif %}
 </div>
 
+{% if escalations_waiting %}
+<div class="note-card mb" style="background:#f0fdf4; border-color:#bbf7d0;">
+  <strong>{{ escalations_waiting }} escalation{{ '' if escalations_waiting == 1 else 's' }} need{{ 's' if escalations_waiting == 1 else '' }} your attention.</strong>
+  <a href="{{ url_for('escalations.index') }}" style="text-decoration:underline; margin-left:6px;">Open escalations</a>
+</div>
+{% endif %}
+
 <div class="grid-2">
   {% if can_post or can_publish %}
   <div class="card">
@@ -62,7 +69,7 @@
       {% for n in notices %}
       <div class="note-card">
         <div class="row" style="justify-content:space-between;">
-          <strong>{{ n.title }}</strong>
+          <strong>{{ n.title }}{% if n.id in new_ids %} <span class="tag tag-new">New</span>{% endif %}</strong>
           <span>
             {% if n.audience == 'DEPARTMENT' %}<span class="tag tag-dept">{{ n.department.name }}</span>
             {% elif n.audience == 'STAFF' %}<span class="tag tag-staff">All staff</span>

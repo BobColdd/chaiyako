@@ -1,0 +1,52 @@
+{# The Escalate button and the card it opens. Include it once per page.
+   On a farmer's page the farmer is attached to the case automatically ({% set farmer = ... %} is not needed:
+   the include sees the page's own `farmer`). #}
+{% if can('RAISE_ESCALATION') %}
+<button type="button" class="btn btn-outline btn-sm" id="escalate-open">Escalate</button>
+
+<dialog class="escalate-dialog" id="escalate-dialog" aria-labelledby="escalate-title">
+  <form method="POST" action="{{ url_for('escalations.create') }}" class="stack">
+    <div class="card-header" style="margin-bottom:0;">
+      <h3 id="escalate-title">Escalate a case</h3>
+      <button type="button" class="dialog-close" id="escalate-close" aria-label="Close">&times;</button>
+    </div>
+    {% if farmer is defined and farmer %}
+      <p class="hint">About {{ farmer.full_name }} · {{ farmer.farmer_number }}</p>
+      <input type="hidden" name="farmer_id" value="{{ farmer.id }}">
+    {% endif %}
+    <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+    <div>
+      <label for="escalate-to">Escalate to</label>
+      <select name="department_id" id="escalate-to" required>
+        <option value="" disabled selected>Choose an officer…</option>
+        {% for dept, officer in escalation_desks() %}
+          <option value="{{ dept.id }}">{{ officer }} ({{ dept.name }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="escalate-what">What is being escalated?</label>
+      <textarea name="description" id="escalate-what" rows="5" maxlength="2000" required
+                placeholder="What happened, what has been tried, and what you need from them."></textarea>
+    </div>
+    <div class="row">
+      <button class="btn btn-primary" type="submit">Send escalation</button>
+      <button class="btn btn-outline" type="button" id="escalate-cancel">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function () {
+  var dlg = document.getElementById('escalate-dialog');
+  var open = document.getElementById('escalate-open');
+  if (!dlg || !open) return;
+  function show() { if (dlg.showModal) { dlg.showModal(); } else { dlg.setAttribute('open', ''); } }
+  function hide() { if (dlg.close) { dlg.close(); } else { dlg.removeAttribute('open'); } }
+  open.addEventListener('click', show);
+  document.getElementById('escalate-close').addEventListener('click', hide);
+  document.getElementById('escalate-cancel').addEventListener('click', hide);
+  dlg.addEventListener('click', function (e) { if (e.target === dlg) hide(); });   // click on the dimmed backdrop
+})();
+</script>
+{% endif %}

@@ -18,6 +18,7 @@ _NAV = [
     ("inputs.distribution", "Distribution", lambda can: can("PROCESS_FERTILIZER")),
     ("farmers.index", "Farmers", lambda can: can("VIEW_FARMER") or can("CREATE_FARMER")),
     ("complaints.index", "Complaints", lambda can: can("HANDLE_COMPLAINT") or can("GENERATE_REPORTS")),
+    ("escalations.index", "Escalations", lambda can: can("RAISE_ESCALATION") or can("HANDLE_ESCALATION")),
     ("field.queue", "Farm verification", lambda can: can("VERIFY_FARM")),
     ("management.dashboard", "Live overview", lambda can: can("GENERATE_REPORTS")),
     ("management.insights", "Insights and trends", lambda can: can("GENERATE_REPORTS")),

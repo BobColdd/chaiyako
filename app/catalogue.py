@@ -57,6 +57,8 @@ PERMISSIONS = [
     ("CREATE_USER", "Create employee accounts and reset access"),
     ("MANAGE_PERMISSIONS", "Change which roles an employee holds"),
     ("VIEW_AUDIT_LOG", "Read the audit trail"),
+    ("RAISE_ESCALATION", "Escalate a case to another department's officer"),
+    ("HANDLE_ESCALATION", "Receive, take and resolve cases escalated to your department"),
     # Used by the finance screens in a later phase.
     ("GENERATE_STATEMENT", "Prepare farmer statements"),
     ("APPROVE_STATEMENT", "Approve farmer statements"),
@@ -69,6 +71,21 @@ PERMISSIONS = [
 
 _IT_OFFICER = ["VIEW_STAFF", "CREATE_USER", "MANAGE_SCALES", "POST_NOTICE"]
 _FINANCE_OFFICER = ["VIEW_FARMER", "VIEW_TRANSACTION", "GENERATE_STATEMENT", "POST_NOTICE"]
+
+# Where an escalation can go: (department, the officer it lands with).
+# The person raising it picks the officer; everyone in that department who holds
+# HANDLE_ESCALATION (through their role or a delegation) sees it in their inbox.
+ESCALATION_DESKS = [
+    (DEPT_FINANCE, "Finance Officer"),
+    (DEPT_IT, "IT Officer"),
+    (DEPT_FIELD, "Field Officer"),
+    (DEPT_INPUTS, "Inputs Officer"),
+    (DEPT_RELATIONS, "Farmer Relations Officer"),
+    (DEPT_BUYING, "Tea Buying Manager"),
+    (DEPT_MANAGEMENT, "Factory Manager"),
+]
+
+_ESCALATION_RECEIVERS = {role for _dept, role in ESCALATION_DESKS}
 
 ROLES = [
     ("Factory Manager", DEPT_MANAGEMENT, "Broad oversight; changes still need the right authority",
@@ -98,6 +115,22 @@ ROLES = [
 ]
 
 
+def _with_escalation_permissions(roles):
+    """Customer Service raises escalations; the officers named in ESCALATION_DESKS receive them."""
+    result = []
+    for name, dept, description, perms in roles:
+        perms = list(perms)
+        if name == "Customer Service Officer":
+            perms.append("RAISE_ESCALATION")
+        if name in _ESCALATION_RECEIVERS:
+            perms.append("HANDLE_ESCALATION")
+        result.append((name, dept, description, perms))
+    return result
+
+
+ROLES = _with_escalation_permissions(ROLES)
+
+
 def _check_catalogue():
     """A typo in a role's permission list should fail loudly, not silently grant nothing."""
     known = {name for name, _ in PERMISSIONS}
@@ -106,6 +139,10 @@ def _check_catalogue():
         assert not unknown, f"Role '{name}' lists unknown permissions: {sorted(unknown)}"
     assert len(known) == len(PERMISSIONS), "Duplicate permission name in the catalogue"
     dept_names = {name for name, _ in DEPARTMENTS}
+    role_names = {name for name, *_ in ROLES}
+    for dept, role in ESCALATION_DESKS:
+        assert dept in dept_names, f"Escalation desk names an unknown department '{dept}'"
+        assert role in role_names, f"Escalation desk names an unknown role '{role}'"
     for name, dept, _desc, _perms in ROLES:
         assert dept in dept_names, f"Role '{name}' names an unknown department '{dept}'"
 
@@ -122,20 +159,30 @@ def ensure_reference_data():
                 db.session.add(Department(name=name, description=description))
 
         permissions = {p.name: p for p in Permission.query.all()}
+        brand_new = set()
         for name, description in PERMISSIONS:
             if name not in permissions:
                 permission = Permission(name=name, description=description)
                 db.session.add(permission)
                 permissions[name] = permission
+                brand_new.add(name)
         db.session.flush()
 
-        have_roles = {r.name for r in Role.query.all()}
+        existing_roles = {r.name: r for r in Role.query.all()}
         for name, _dept, description, perm_names in ROLES:
-            if name not in have_roles:
+            role = existing_roles.get(name)
+            if role is None:
                 db.session.add(Role(
                     name=name, description=description,
                     permissions=[permissions[p] for p in perm_names],
                 ))
+            else:
+                # A permission that has only just been introduced is offered to the roles the
+                # catalogue says should hold it. Grants that already existed are never touched,
+                # so an administrator's edits survive a restart.
+                for p in perm_names:
+                    if p in brand_new and permissions[p] not in role.permissions:
+                        role.permissions.append(permissions[p])
         db.session.commit()
     except IntegrityError:
         # Another worker started at the same moment and got there first.

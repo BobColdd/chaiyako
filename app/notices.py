@@ -8,7 +8,10 @@ from app import db, rules
 from app.analytics import active_centres
 from app.models import Department, Notice
 from app.permissions import has_permission
-from app.services import ServiceError, all_live_notices, create_notice, deactivate_notice, visible_notices
+from app.services import (
+    ServiceError, all_live_notices, create_notice, deactivate_notice, mark_notices_read,
+    unread_notice_ids, visible_notices,
+)
 
 notices_bp = Blueprint("notices", __name__, url_prefix="/notices")
 
@@ -27,8 +30,14 @@ def board():
     else:
         departments = []
 
+    # Remember which were new BEFORE marking them seen, so the board can tag them this once.
+    new_ids = unread_notice_ids(current_user)
+    mark_notices_read(current_user)
+    db.session.commit()
+
     return render_template(
         "notices/board.html",
+        new_ids=new_ids,
         notices=all_live_notices() if show_all else visible_notices(current_user),
         show_all=show_all, can_post=can_post, can_publish=can_publish,
         departments=departments, centres=active_centres(), categories=rules.NOTICE_CATEGORIES,

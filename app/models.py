@@ -486,6 +486,22 @@ class Notice(db.Model):
     )
 
 
+class NoticeRead(db.Model):
+    """Records that one employee has seen one notice. No row means it is still new to them,
+    which is what puts the green dot on their bell."""
+    __tablename__ = "notice_reads"
+
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False)
+    notice_id = db.Column(db.Integer, db.ForeignKey("notices.id"), nullable=False)
+    read_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint("employee_id", "notice_id", name="uq_notice_read"),
+        db.Index("ix_notice_read_employee", "employee_id"),
+    )
+
+
 class Complaint(db.Model):
     """Filed by a farmer (through the farmer app) and handled by Farmer Relations.
     Becomes a case in Phase 2."""
@@ -505,6 +521,41 @@ class Complaint(db.Model):
     farmer = db.relationship("Farmer")
     transaction = db.relationship("TeaTransaction")
     resolved_by = db.relationship("Employee")
+
+
+class Escalation(db.Model):
+    """A case one person hands up to another department's officer.
+
+    open     - waiting on the receiving desk; nobody has picked it up
+    taken    - one officer at that desk has picked it up
+    resolved - the desk has dealt with it and left a note for whoever raised it
+    """
+    __tablename__ = "escalations"
+
+    id = db.Column(db.Integer, primary_key=True)
+    raised_by_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False, index=True)
+    to_department_id = db.Column(db.Integer, db.ForeignKey("departments.id"), nullable=False)
+    farmer_id = db.Column(db.Integer, db.ForeignKey("farmers.id"))          # set when raised from a farmer's page
+    description = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(10), nullable=False, default="open")
+    taken_by_id = db.Column(db.Integer, db.ForeignKey("employees.id"))
+    taken_at = db.Column(db.DateTime)
+    resolved_by_id = db.Column(db.Integer, db.ForeignKey("employees.id"))
+    resolved_at = db.Column(db.DateTime)
+    resolution_note = db.Column(db.Text)
+    outcome_seen = db.Column(db.Boolean, nullable=False, default=False)     # has the person who raised it read the outcome?
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+    raised_by = db.relationship("Employee", foreign_keys=[raised_by_id])
+    taken_by = db.relationship("Employee", foreign_keys=[taken_by_id])
+    resolved_by = db.relationship("Employee", foreign_keys=[resolved_by_id])
+    to_department = db.relationship("Department")
+    farmer = db.relationship("Farmer")
+
+    __table_args__ = (
+        db.CheckConstraint("status IN ('open','taken','resolved')", name="ck_escalation_status"),
+        db.Index("ix_escalation_desk_status", "to_department_id", "status"),
+    )
 
 
 class FertilizerDistribution(db.Model):
